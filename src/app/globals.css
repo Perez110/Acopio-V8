@@ -1,26 +1,192 @@
 @import "tailwindcss";
 
+/* ══════════════════════════════════════════════════════════════════════════
+   DESIGN TOKENS — Light Mode estilo SmilePay
+   Paleta: fondos gris ultra-claro, blanco para tarjetas, verde esmeralda oscuro
+   ══════════════════════════════════════════════════════════════════════════ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+  /* ── App structure ───────────────────────────────────────────────────── */
+  --app-bg:   #f1f5f9;   /* fondo general: slate-100 — base corporativa limpia */
+  --surface:  #ffffff;   /* tarjetas, paneles, sidebar — blanco puro            */
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  /* ── Color primario: verde esmeralda oscuro (estilo SmilePay) ─────────── */
+  --primary:        #0d5c4c;   /* principal: botones activos, bordes de nav   */
+  --primary-light:  #1a7a65;   /* hover del primario                          */
+  --primary-bg:     #d1fae5;   /* fondo activo: emerald-100 — verde menta con cuerpo  */
+  --primary-border: #34d399;   /* borde del item activo: emerald-400 — más saturado   */
+
+  /* ── Texto ──────────────────────────────────────────────────────────────── */
+  --text-1: #1e293b;   /* slate-800: titulares, datos clave               */
+  --text-2: #475569;   /* slate-600: etiquetas, texto secundario           */
+  --text-3: #94a3b8;   /* slate-400: placeholders, hints, versión          */
+
+  /* ── Bordes ─────────────────────────────────────────────────────────────── */
+  --border:        #cbd5e1;   /* slate-300: bordes nítidos y definidos       */
+  --border-subtle: #e2e8f0;   /* slate-200: divisores internos dentro de cards */
+
+  /* Fuentes (inyectadas por Next.js font) */
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+@theme inline {
+  --color-background: var(--app-bg);
+  --color-foreground: var(--text-1);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
 }
 
+/* ── Base ─────────────────────────────────────────────────────────────────── */
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--app-bg);
+  color: var(--text-1);
+  font-family: var(--font-sans, Arial, Helvetica, sans-serif);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
+
+/* ── Clase utilitaria: inputs / selects / textareas ──────────────────────── */
+.input-base {
+  width: 100%;
+  border-radius: 0.75rem;
+  border: 1px solid var(--border);
+  padding: 0.625rem 0.75rem;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  color: var(--text-1);
+  background-color: var(--surface);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.input-base:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(13, 92, 76, 0.1);
+}
+
+.input-base::placeholder {
+  color: var(--text-3);
+}
+
+/* ── Scrollbar personalizado ─────────────────────────────────────────────── */
+::-webkit-scrollbar          { width: 5px; height: 5px; }
+::-webkit-scrollbar-track    { background: transparent; }
+::-webkit-scrollbar-thumb    { background: #cbd5e1; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PALETTE REMAP — Erradica orange / blue / purple → paleta esmeralda.
+
+   Técnica: las reglas .clase {} declaradas DESPUÉS de @import "tailwindcss"
+   se ubican al final de la cascada CSS y ganan sin necesidad de !important,
+   ya que comparten la misma especificidad (0,1,0) y la posición posterior
+   las hace prevalecer.
+
+   Tres gamas de esmeralda para mantener diferenciación visual:
+     • PRIMARIO  #0d5c4c  (hover: #0a4a3c) — botones CTA, bordes activos
+     • MEDIO     #059669  / #047857        — textos sobre fondo claro
+     • SUAVE     #ecfdf5  / #d1fae5        — fondos de badges y tarjetas
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Fondos ORANGE → esmeralda (jerarquía subida un escalón) ────────────── */
+.bg-orange-50   { background-color: #d1fae5; }   /* emerald-100 — menta con cuerpo */
+.bg-orange-100  { background-color: #a7f3d0; }   /* emerald-200                     */
+.bg-orange-200  { background-color: #6ee7b7; }   /* emerald-300                     */
+.bg-orange-400  { background-color: #059669; }   /* toggle OFF state                */
+.bg-orange-500  { background-color: #0d5c4c; }   /* botón primario                  */
+
+.hover\:bg-orange-50:hover   { background-color: #d1fae5; }
+.hover\:bg-orange-100:hover  { background-color: #a7f3d0; }
+.hover\:bg-orange-600:hover  { background-color: #0a4a3c; }
+
+/* opacity modifier (hover:bg-orange-50/40) */
+.hover\:bg-orange-50\/40:hover { background-color: rgba(209,250,229,0.4); }
+
+.disabled\:bg-orange-300:disabled { background-color: #6ee7b7; }
+
+/* ── Texto ORANGE → esmeralda medio ─────────────────────────────────────── */
+.text-orange-400 { color: #34d399; }
+.text-orange-500 { color: #10b981; }
+.text-orange-600 { color: #059669; }
+.text-orange-700 { color: #047857; }
+
+.hover\:text-orange-700:hover { color: #047857; }
+
+/* ── Bordes ORANGE → esmeralda ───────────────────────────────────────────── */
+.border-orange-100 { border-color: #a7f3d0; }   /* emerald-200 */
+.border-orange-200 { border-color: #6ee7b7; }   /* emerald-300 */
+
+.focus\:border-orange-400:focus { border-color: #10b981; }
+.focus\:ring-orange-100         { --tw-ring-color: rgba(167,243,208,0.5); }
+
+/* ── Fondos BLUE → esmeralda (jerarquía subida) ─────────────────────────── */
+.bg-blue-50  { background-color: #d1fae5; }      /* emerald-100            */
+.bg-blue-100 { background-color: #a7f3d0; }      /* emerald-200            */
+.bg-blue-500 { background-color: #059669; }      /* badge "sin deuda"      */
+.bg-blue-600 { background-color: #0d5c4c; }      /* botón primario          */
+
+.hover\:bg-blue-50:hover  { background-color: #d1fae5; }
+.hover\:bg-blue-700:hover { background-color: #0a4a3c; }
+
+/* ── Texto BLUE → esmeralda medio ───────────────────────────────────────── */
+.text-blue-500 { color: #10b981; }
+.text-blue-600 { color: #059669; }
+.text-blue-700 { color: #047857; }
+
+.hover\:text-blue-500:hover { color: #10b981; }
+.hover\:text-blue-600:hover { color: #059669; }
+
+/* ── Bordes BLUE → esmeralda ─────────────────────────────────────────────── */
+.border-blue-100 { border-color: #a7f3d0; }   /* emerald-200 */
+.border-blue-200 { border-color: #6ee7b7; }   /* emerald-300 */
+
+.focus\:border-blue-400:focus { border-color: #10b981; }
+.focus\:ring-blue-100         { --tw-ring-color: rgba(167,243,208,0.5); }
+
+/* ── Fondos PURPLE → esmeralda (jerarquía subida) ───────────────────────── */
+.bg-purple-50  { background-color: #d1fae5; }    /* emerald-100            */
+.bg-purple-100 { background-color: #a7f3d0; }    /* emerald-200            */
+.bg-purple-200 { background-color: #6ee7b7; }    /* emerald-300            */
+.bg-purple-600 { background-color: #0d5c4c; }    /* botón CTA Informes     */
+
+.hover\:bg-purple-100:hover  { background-color: #a7f3d0; }
+.hover\:bg-purple-700:hover  { background-color: #0a4a3c; }
+
+/* ── Texto PURPLE → esmeralda medio ─────────────────────────────────────── */
+.text-purple-300 { color: #6ee7b7; }
+.text-purple-400 { color: #34d399; }
+.text-purple-500 { color: #10b981; }
+.text-purple-600 { color: #059669; }
+.text-purple-700 { color: #047857; }
+.text-purple-800 { color: #065f46; }
+
+/* ── Bordes PURPLE → esmeralda ───────────────────────────────────────────── */
+.border-purple-100 { border-color: #a7f3d0; }   /* emerald-200 */
+.border-purple-200 { border-color: #6ee7b7; }   /* emerald-300 */
+
+.focus\:border-purple-400:focus { border-color: #10b981; }
+.focus\:ring-purple-100         { --tw-ring-color: rgba(167,243,208,0.5); }
+
+/* ── Spinner de carga (animate-spin text-purple-500) ────────────────────── */
+.animate-spin.text-purple-500 { color: #10b981; }
+
+/* ── Leyenda y badges en Historial/Informes ──────────────────────────────── */
+.bg-blue-100.text-blue-700,
+.bg-purple-100.text-purple-700 {
+  background-color: #a7f3d0;   /* emerald-200 — coherente con jerarquía subida */
+  color: #047857;
+}
+
+/* ── Indigo (si aparece) ─────────────────────────────────────────────────── */
+.bg-indigo-50  { background-color: #d1fae5; }   /* emerald-100 */
+.bg-indigo-100 { background-color: #a7f3d0; }   /* emerald-200 */
+.bg-indigo-600 { background-color: #0d5c4c; }
+.text-indigo-600 { color: #059669; }
+.text-indigo-700 { color: #047857; }
+.hover\:bg-indigo-700:hover { background-color: #0a4a3c; }
+
+/* ── Amber (íconos de header de módulo) ─────────────────────────────────── */
+.bg-amber-50  { background-color: #d1fae5; }   /* emerald-100 */
+.bg-amber-100 { background-color: #a7f3d0; }   /* emerald-200 */
+.text-amber-600 { color: #059669; }
+.text-amber-700 { color: #047857; }

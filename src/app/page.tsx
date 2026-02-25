@@ -1,65 +1,217 @@
-import Image from "next/image";
+import {
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  Package,
+  Landmark,
+  TrendingUp,
+} from 'lucide-react';
+import { supabaseServer } from '@/lib/supabase-server';
+import { formatCurrency, formatNumber } from '@/lib/utils';
 
-export default function Home() {
+// Revalidar cada 60 s para que los KPIs no queden obsoletos
+export const revalidate = 60;
+
+// Tipo que devuelve la RPC get_dashboard_kpis (una fila)
+interface DashboardKPIsRow {
+  entradas_mes_kg?: number | null;
+  salidas_mes_kg?: number | null;
+  saldo_financiero_mes?: number | null;
+  stock_bines_actual?: number | null;
+}
+
+// Tipos para las listas limitadas (con JOIN a Proveedores/Clientes)
+interface UltimaEntradaRow {
+  id: number;
+  fecha_entrada: string | null;
+  peso_neto_kg: number | null;
+  Proveedores: { nombre: string | null } | null;
+}
+
+interface UltimaSalidaRow {
+  id: number;
+  fecha_salida: string | null;
+  peso_salida_acopio_kg: number | null;
+  Clientes: { nombre: string | null } | null;
+}
+
+function formatDate(d: string | null): string {
+  if (!d) return '—';
+  const [y, m, day] = d.split('-');
+  return `${day}/${m}/${y}`;
+}
+
+export default async function DashboardPage() {
+  const now = new Date();
+  const p_mes = now.getMonth() + 1;
+  const p_anio = now.getFullYear();
+
+  // Inicio y fin del mes actual (YYYY-MM-DD) para filtro estricto en listas
+  const startOfMonth = `${p_anio}-${String(p_mes).padStart(2, '0')}-01`;
+  const lastDay = new Date(p_anio, p_mes, 0).getDate();
+  const endOfMonth = `${p_anio}-${String(p_mes).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+  // Una sola RPC para todos los KPIs (cálculo en base de datos, filtrado por mes/año)
+  const { data: kpisRows } = await supabaseServer.rpc('get_dashboard_kpis', {
+    p_mes,
+    p_anio,
+  });
+
+  // Últimas 5 entradas y 5 salidas del MES ACTUAL, con nombre de proveedor/cliente
+  const [
+    { data: ultimasEntradas },
+    { data: ultimasSalidas },
+  ] = await Promise.all([
+    supabaseServer
+      .from('Entradas_Fruta')
+      .select('id, fecha_entrada, peso_neto_kg, Proveedores(nombre)')
+      .gte('fecha_entrada', startOfMonth)
+      .lte('fecha_entrada', endOfMonth)
+      .order('created_at', { ascending: false })
+      .limit(5),
+    supabaseServer
+      .from('Salidas_Fruta')
+      .select('id, fecha_salida, peso_salida_acopio_kg, Clientes(nombre)')
+      .gte('fecha_salida', startOfMonth)
+      .lte('fecha_salida', endOfMonth)
+      .order('created_at', { ascending: false })
+      .limit(5),
+  ]);
+
+  const row = (kpisRows ?? [])[0] as DashboardKPIsRow | undefined;
+  const entradasMesKg = Number(row?.entradas_mes_kg ?? 0);
+  const salidasMesKg = Number(row?.salidas_mes_kg ?? 0);
+  const saldoFinancieroMes = Number(row?.saldo_financiero_mes ?? 0);
+  const stockBinesActual = Number(row?.stock_bines_actual ?? 0);
+
+  const entradasList = (ultimasEntradas ?? []) as UltimaEntradaRow[];
+  const salidasList = (ultimasSalidas ?? []) as UltimaSalidaRow[];
+
+  const stats = [
+    {
+      label: 'Entradas del mes',
+      value: formatNumber(entradasMesKg),
+      unit: 'kg',
+      icon: ArrowDownToLine,
+      color: 'bg-emerald-50 text-emerald-700',
+      border: 'border-emerald-100',
+    },
+    {
+      label: 'Salidas del mes',
+      value: formatNumber(salidasMesKg),
+      unit: 'kg',
+      icon: ArrowUpFromLine,
+      color: 'bg-teal-50 text-teal-700',
+      border: 'border-teal-100',
+    },
+    {
+      label: 'Stock en Bines',
+      value: formatNumber(stockBinesActual),
+      unit: 'bines',
+      icon: Package,
+      color: 'bg-green-50 text-green-700',
+      border: 'border-green-100',
+    },
+    {
+      label: 'Saldo Financiero',
+      value: formatCurrency(saldoFinancieroMes),
+      unit: '',
+      icon: Landmark,
+      color: 'bg-slate-100 text-slate-600',
+      border: 'border-slate-200',
+    },
+  ];
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="p-8">
+      {/* Header */}
+      <div className="mb-8">
+        <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
+          <TrendingUp className="h-4 w-4" />
+          <span>Resumen general</span>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+        <p className="text-gray-500 mt-1">Bienvenido al sistema de gestión de acopio</p>
+      </div>
+
+      {/* Tarjetas de estadísticas */}
+      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4">
+        {stats.map(({ label, value, unit, icon: Icon, color, border }) => (
+          <div
+            key={label}
+            className={`rounded-xl border ${border} bg-white p-6 shadow-sm`}
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm text-gray-500">{label}</p>
+                <p className="mt-2 text-3xl font-bold text-gray-900">
+                  {value}
+                  {unit ? (
+                    <span className="ml-1 text-base font-normal text-gray-400">{unit}</span>
+                  ) : null}
+                </p>
+              </div>
+              <div className={`rounded-lg p-2.5 ${color}`}>
+                <Icon className="h-5 w-5" />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Sección de actividad reciente */}
+      <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
+          <h2 className="mb-4 text-base font-semibold text-gray-900">Últimas Entradas</h2>
+          {entradasList.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-10 text-center">
+              <ArrowDownToLine className="h-10 w-10 text-gray-200 mb-2" />
+              <p className="text-sm text-gray-400">Sin entradas registradas aún</p>
+            </div>
+          ) : (
+            <ul className="divide-y divide-gray-50">
+              {entradasList.map((e) => (
+                <li key={e.id} className="grid grid-cols-[1fr_minmax(0,2fr)_auto] items-center gap-3 py-2.5 first:pt-0">
+                  <span className="text-sm text-gray-500 shrink-0">
+                    {formatDate(e.fecha_entrada)}
+                  </span>
+                  <span className="text-sm font-medium text-gray-900 truncate min-w-0" title={e.Proveedores?.nombre ?? undefined}>
+                    {e.Proveedores?.nombre ?? '—'}
+                  </span>
+                  <span className="font-mono text-sm font-semibold text-gray-900 text-right shrink-0">
+                    {formatNumber(e.peso_neto_kg ?? 0)} kg
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
-      </main>
+
+        <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
+          <h2 className="mb-4 text-base font-semibold text-gray-900">Últimas Salidas</h2>
+          {salidasList.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-10 text-center">
+              <ArrowUpFromLine className="h-10 w-10 text-gray-200 mb-2" />
+              <p className="text-sm text-gray-400">Sin salidas registradas aún</p>
+            </div>
+          ) : (
+            <ul className="divide-y divide-gray-50">
+              {salidasList.map((s) => (
+                <li key={s.id} className="grid grid-cols-[1fr_minmax(0,2fr)_auto] items-center gap-3 py-2.5 first:pt-0">
+                  <span className="text-sm text-gray-500 shrink-0">
+                    {formatDate(s.fecha_salida)}
+                  </span>
+                  <span className="text-sm font-medium text-gray-900 truncate min-w-0" title={s.Clientes?.nombre ?? undefined}>
+                    {s.Clientes?.nombre ?? '—'}
+                  </span>
+                  <span className="font-mono text-sm font-semibold text-gray-900 text-right shrink-0">
+                    {formatNumber(s.peso_salida_acopio_kg ?? 0)} kg
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

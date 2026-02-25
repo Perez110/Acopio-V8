@@ -1,0 +1,642 @@
+'use client';
+
+import { useState, useTransition, useCallback } from 'react';
+import {
+  Truck, Users, Download, FileText, Search, RefreshCw, AlertTriangle, CheckCircle,
+} from 'lucide-react';
+import {
+  fetchInformeProveedores,
+  fetchInformeClientes,
+  type RowProveedor,
+  type RowCliente,
+} from '@/app/informes/actions';
+
+// ── Tipos ─────────────────────────────────────────────────────────────────────
+type Tab = 'proveedores' | 'clientes';
+type Row = RowProveedor | RowCliente;
+
+interface Props {
+  rowsProveedoresInicial: RowProveedor[];
+  rowsClientesInicial: RowCliente[];
+  startInicial: string;
+  endInicial: string;
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function fmtCurrency(n: number) {
+  return `$${Math.abs(n).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function fmtKg(n: number) {
+  return `${n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg`;
+}
+
+function nombreRow(r: Row, tab: Tab) {
+  return tab === 'proveedores'
+    ? (r as RowProveedor).proveedorNombre
+    : (r as RowCliente).clienteNombre;
+}
+
+/** Convierte los datos actuales a CSV y lo descarga en el navegador. */
+function exportCSV(rows: Row[], tab: Tab, start: string, end: string) {
+  const headers = [
+    'Entidad',
+    'Saldo Anterior ($)',
+    'Kilos del Período (kg)',
+    'Valor Generado ($)',
+    'Dinero Movido ($)',
+    'Saldo Final ($)',
+  ];
+
+  const body = rows.map(r => {
+    const nombre = nombreRow(r, tab);
+    // Escapar comas y comillas en el nombre
+    const safeNombre = `"${nombre.replace(/"/g, '""')}"`;
+    return [
+      safeNombre,
+      r.saldoAnterior.toFixed(2),
+      r.kilosDelPeriodo.toFixed(2),
+      r.valorGenerado.toFixed(2),
+      r.dineroMovido.toFixed(2),
+      r.saldoFinal.toFixed(2),
+    ].join(',');
+  });
+
+  const csv = [headers.join(','), ...body].join('\n');
+  // BOM UTF-8 para que Excel lo abra correctamente con acentos
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `informe-${tab}-${start}_${end}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/** Formatea un número como moneda plana para el PDF (sin símbolos Unicode especiales). */
+function pdfMoney(n: number): string {
+  const abs = Math.abs(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return `$${abs}`;
+}
+
+/** Genera y descarga el informe en formato PDF usando jsPDF + autoTable (carga dinámica). */
+async function exportPDF(
+  rows: Row[],
+  tab: Tab,
+  start: string,
+  end: string,
+) {
+  // Carga dinámica: jsPDF (~400 KB) se descarga solo cuando el usuario la pide,
+  // sin impactar el bundle inicial de la aplicación.
+  const { default: jsPDF } = await import('jspdf');
+  const { default: autoTable } = await import('jspdf-autotable');
+
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const entidadLabel = tab === 'proveedores' ? 'Proveedores' : 'Clientes';
+
+  // ── Encabezado del documento ────────────────────────────────────────────────
+  doc.setFontSize(18);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(30, 41, 59);   // slate-800
+  doc.text(`Estado de Cuenta — ${entidadLabel}`, 14, 18);
+
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(100, 116, 139);  // slate-500
+  doc.text(`Período: ${start}  al  ${end}`, 14, 26);
+
+  const ahora = new Date().toLocaleString('es-AR', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
+  doc.text(`Generado: ${ahora}`, 14, 32);
+
+  // ── Totales para la fila de pie de tabla ────────────────────────────────────
+  const totSaldoAnt = rows.reduce((s, r) => s + r.saldoAnterior, 0);
+  const totKilos    = rows.reduce((s, r) => s + r.kilosDelPeriodo, 0);
+  const totValor    = rows.reduce((s, r) => s + r.valorGenerado, 0);
+  const totMovido   = rows.reduce((s, r) => s + r.dineroMovido, 0);
+  const totSaldo    = rows.reduce((s, r) => s + r.saldoFinal, 0);
+
+  const fmtSaldo = (n: number) =>
+    n === 0 ? 'Saldado' : n > 0 ? pdfMoney(n) : `-${pdfMoney(Math.abs(n))} a favor`;
+
+  // ── Tabla ───────────────────────────────────────────────────────────────────
+  autoTable(doc, {
+    startY: 38,
+    head: [[
+      tab === 'proveedores' ? 'Proveedor' : 'Cliente',
+      'Saldo Anterior',
+      'Kilos del Período',
+      'Valor Generado',
+      'Dinero Movido',
+      'Saldo Final',
+    ]],
+    body: rows.map(r => {
+      const nombre = tab === 'proveedores'
+        ? (r as RowProveedor).proveedorNombre
+        : (r as RowCliente).clienteNombre;
+
+      return [
+        nombre,
+        r.saldoAnterior === 0 ? '—' : fmtSaldo(r.saldoAnterior),
+        r.kilosDelPeriodo > 0 ? `${r.kilosDelPeriodo.toFixed(2)} kg` : '—',
+        r.valorGenerado > 0   ? pdfMoney(r.valorGenerado)            : '—',
+        r.dineroMovido > 0    ? pdfMoney(r.dineroMovido)             : '—',
+        fmtSaldo(r.saldoFinal),
+      ];
+    }),
+    foot: [[
+      `TOTALES (${rows.length} ${entidadLabel.toLowerCase()})`,
+      totSaldoAnt !== 0 ? fmtSaldo(totSaldoAnt) : '—',
+      `${totKilos.toFixed(2)} kg`,
+      pdfMoney(totValor),
+      pdfMoney(totMovido),
+      fmtSaldo(totSaldo),
+    ]],
+
+    theme: 'grid',
+
+    // ── Estilos globales ────────────────────────────────────────────────────
+    styles: {
+      fontSize: 9,
+      cellPadding: { top: 3.5, right: 6, bottom: 3.5, left: 6 },
+      overflow: 'linebreak',
+      textColor: [51, 65, 85],      // slate-700
+      halign: 'center',
+      valign: 'middle',
+      lineColor: [226, 232, 240],   // slate-200 — líneas ultra finas
+      lineWidth: 0.1,
+    },
+
+    // ── Encabezado: verde agua claro premium ────────────────────────────────
+    headStyles: {
+      fillColor: [236, 253, 245],   // emerald-50
+      textColor: [13, 92, 76],      // #0d5c4c — esmeralda primario
+      fontSize: 9,
+      fontStyle: 'bold',
+    },
+
+    // ── Fila de totales ──────────────────────────────────────────────────────
+    footStyles: {
+      fillColor: [241, 245, 249],   // slate-100
+      textColor: [15, 23, 42],      // slate-950
+      fontStyle: 'bold',
+      fontSize: 9,
+    },
+
+    // ── Filas cebra ──────────────────────────────────────────────────────────
+    alternateRowStyles: {
+      fillColor: [248, 250, 252],   // slate-50
+    },
+
+    // ── Anchos de columna (sin forzar halign, lo hereda de styles) ───────────
+    columnStyles: {
+      0: { cellWidth: 55, fontStyle: 'bold' },
+      1: { cellWidth: 35 },
+      2: { cellWidth: 38 },
+      3: { cellWidth: 38 },
+      4: { cellWidth: 38 },
+      5: { cellWidth: 40, fontStyle: 'bold' },
+    },
+
+    // ── Colorear el Saldo Final según deuda / crédito / saldado ────────────
+    didParseCell: (data) => {
+      if (data.section === 'body' && data.column.index === 5) {
+        const row = rows[data.row.index];
+        if (!row) return;
+        if (row.saldoFinal > 0) {
+          data.cell.styles.textColor = [185, 28, 28];   // rojo — deuda pendiente
+        } else if (row.saldoFinal < 0) {
+          data.cell.styles.textColor = [6, 95, 70];     // esmeralda-800 — saldo a favor
+        } else {
+          data.cell.styles.textColor = [21, 128, 61];   // verde — saldado
+        }
+      }
+    },
+
+    margin: { top: 38, left: 14, right: 14 },
+    showHead: 'firstPage',
+    showFoot: 'lastPage',
+  });
+
+  // ── Número de página en cada hoja ───────────────────────────────────────────
+  const totalPags = (doc.internal as unknown as { getNumberOfPages: () => number }).getNumberOfPages();
+  for (let i = 1; i <= totalPags; i++) {
+    doc.setPage(i);
+    doc.setFontSize(8);
+    doc.setTextColor(160, 160, 170);
+    doc.text(
+      `Pagina ${i} de ${totalPags}  |  Sistema de Acopio`,
+      doc.internal.pageSize.getWidth() / 2,
+      doc.internal.pageSize.getHeight() - 8,
+      { align: 'center' },
+    );
+  }
+
+  doc.save(`informe_${tab}_${start}.pdf`);
+}
+
+// ── Componente de tarjeta de resumen ─────────────────────────────────────────
+function SummaryCard({
+  label, value, sub, variant,
+}: {
+  label: string; value: string; sub?: string;
+  variant: 'blue' | 'green' | 'orange' | 'purple' | 'red';
+}) {
+  // Color solo en el número principal — fondo siempre blanco (corporativo)
+  const valueColor = {
+    blue:   'text-slate-900',    // kilos / datos neutros
+    green:  'text-emerald-700',  // dinero cobrado / pagado
+    orange: 'text-slate-900',    // saldo arrastrado neutro
+    purple: 'text-slate-900',    // valor generado neutro
+    red:    'text-red-700',      // deuda / pendiente
+  }[variant];
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">{label}</p>
+      <p className={`mt-1 text-xl font-bold ${valueColor}`}>{value}</p>
+      {sub && <p className="mt-0.5 text-xs text-slate-400">{sub}</p>}
+    </div>
+  );
+}
+
+// ── Componente principal ──────────────────────────────────────────────────────
+export default function InformesClient({
+  rowsProveedoresInicial,
+  rowsClientesInicial,
+  startInicial,
+  endInicial,
+}: Props) {
+  const [tab, setTab] = useState<Tab>('proveedores');
+  const [startDate, setStartDate] = useState(startInicial);
+  const [endDate, setEndDate] = useState(endInicial);
+  const [rowsProv, setRowsProv] = useState<RowProveedor[]>(rowsProveedoresInicial);
+  const [rowsCli, setRowsCli] = useState<RowCliente[]>(rowsClientesInicial);
+  const [search, setSearch] = useState('');
+  const [isPending, startTransition] = useTransition();
+
+  // ── Aplicar filtros (llama server actions) ────────────────────────────────
+  const handleApply = useCallback(() => {
+    if (!startDate || !endDate || startDate > endDate) return;
+    startTransition(async () => {
+      const [prov, cli] = await Promise.all([
+        fetchInformeProveedores(startDate, endDate),
+        fetchInformeClientes(startDate, endDate),
+      ]);
+      setRowsProv(prov);
+      setRowsCli(cli);
+      setSearch('');
+    });
+  }, [startDate, endDate]);
+
+  // ── Datos de la tab activa (con filtro de búsqueda) ───────────────────────
+  const rawRows: Row[] = tab === 'proveedores' ? rowsProv : rowsCli;
+  const filteredRows = rawRows.filter(r =>
+    nombreRow(r, tab).toLowerCase().includes(search.toLowerCase())
+  );
+
+  // ── Totales del footer ────────────────────────────────────────────────────
+  const totKilos = filteredRows.reduce((s, r) => s + r.kilosDelPeriodo, 0);
+  const totValor = filteredRows.reduce((s, r) => s + r.valorGenerado, 0);
+  const totMovido = filteredRows.reduce((s, r) => s + r.dineroMovido, 0);
+  const totSaldo = filteredRows.reduce((s, r) => s + r.saldoFinal, 0);
+
+  // ── Cards de resumen (todos los registros, sin filtro de búsqueda) ────────
+  const allRows: Row[] = tab === 'proveedores' ? rowsProv : rowsCli;
+  const totSaldoAnteriorAll = allRows.reduce((s, r) => s + r.saldoAnterior, 0);
+  const totKilosAll = allRows.reduce((s, r) => s + r.kilosDelPeriodo, 0);
+  const totValorAll = allRows.reduce((s, r) => s + r.valorGenerado, 0);
+  const totMovidoAll = allRows.reduce((s, r) => s + r.dineroMovido, 0);
+  const totSaldoAll = allRows.reduce((s, r) => s + r.saldoFinal, 0);
+
+  const conDeuda = allRows.filter(r => r.saldoFinal > 0).length;
+
+  return (
+    <div className="space-y-5">
+      {/* ── Selector de entidad ───────────────────────────────────────────── */}
+      <div className="inline-flex rounded-xl border border-gray-200 bg-gray-50 p-1 shadow-sm">
+        <button
+          onClick={() => { setTab('proveedores'); setSearch(''); }}
+          className={`flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium transition-all ${
+            tab === 'proveedores' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <Truck className="h-4 w-4" />
+          Proveedores
+          <span className={`rounded-full px-1.5 py-0.5 text-xs font-semibold ${
+            tab === 'proveedores' ? 'bg-orange-100 text-orange-700' : 'bg-gray-200 text-gray-500'
+          }`}>
+            {rowsProv.length}
+          </span>
+        </button>
+        <button
+          onClick={() => { setTab('clientes'); setSearch(''); }}
+          className={`flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium transition-all ${
+            tab === 'clientes' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <Users className="h-4 w-4" />
+          Clientes
+          <span className={`rounded-full px-1.5 py-0.5 text-xs font-semibold ${
+            tab === 'clientes' ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-500'
+          }`}>
+            {rowsCli.length}
+          </span>
+        </button>
+      </div>
+
+      {/* ── Barra de filtros ──────────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+        <div>
+          <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500">
+            Desde
+          </label>
+          <input
+            type="date"
+            value={startDate}
+            onChange={e => setStartDate(e.target.value)}
+            className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-purple-400 focus:outline-none focus:ring-2 focus:ring-purple-100"
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-500">
+            Hasta
+          </label>
+          <input
+            type="date"
+            value={endDate}
+            onChange={e => setEndDate(e.target.value)}
+            className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-purple-400 focus:outline-none focus:ring-2 focus:ring-purple-100"
+          />
+        </div>
+
+        <button
+          onClick={handleApply}
+          disabled={isPending || !startDate || !endDate || startDate > endDate}
+          className="flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {isPending ? (
+            <RefreshCw className="h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4" />
+          )}
+          {isPending ? 'Calculando…' : 'Aplicar'}
+        </button>
+
+        <div className="ml-auto flex items-center gap-2">
+          {/* Buscador */}
+          <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+            <Search className="h-3.5 w-3.5 text-gray-400" />
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder={`Buscar ${tab === 'proveedores' ? 'proveedor' : 'cliente'}…`}
+              className="w-40 bg-transparent text-sm outline-none placeholder:text-gray-400"
+            />
+          </div>
+
+          {/* Exportar CSV */}
+          <button
+            onClick={() => exportCSV(filteredRows, tab, startDate, endDate)}
+            disabled={filteredRows.length === 0}
+            className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-40"
+            title="Exportar tabla a CSV"
+          >
+            <Download className="h-3.5 w-3.5" />
+            Exportar CSV
+          </button>
+
+          {/* Exportar PDF */}
+          <button
+            onClick={() => exportPDF(filteredRows, tab, startDate, endDate)}
+            disabled={filteredRows.length === 0}
+            className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700 transition-colors hover:bg-red-100 disabled:opacity-40"
+            title="Exportar tabla a PDF"
+          >
+            <FileText className="h-3.5 w-3.5" />
+            Exportar PDF
+          </button>
+        </div>
+      </div>
+
+      {/* ── Tarjetas de resumen ───────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <SummaryCard
+          label="Saldo Arrastrado"
+          value={fmtCurrency(totSaldoAnteriorAll)}
+          sub={totSaldoAnteriorAll >= 0 ? 'Deuda anterior' : 'Crédito anterior'}
+          variant={totSaldoAnteriorAll >= 0 ? 'orange' : 'blue'}
+        />
+        <SummaryCard
+          label="Kilos del período"
+          value={fmtKg(totKilosAll)}
+          sub="Movimiento físico"
+          variant="blue"
+        />
+        <SummaryCard
+          label="Valor generado"
+          value={fmtCurrency(totValorAll)}
+          sub="Compras / ventas"
+          variant="purple"
+        />
+        <SummaryCard
+          label="Dinero movido"
+          value={fmtCurrency(totMovidoAll)}
+          sub={tab === 'proveedores' ? 'Pagado' : 'Cobrado'}
+          variant="green"
+        />
+        <SummaryCard
+          label="Saldo final neto"
+          value={fmtCurrency(totSaldoAll)}
+          sub={`${conDeuda} con deuda activa`}
+          variant={totSaldoAll > 0 ? 'red' : 'green'}
+        />
+      </div>
+
+      {/* ── Tabla principal ───────────────────────────────────────────────── */}
+      <div className={`relative rounded-xl border border-slate-300 bg-white shadow-sm ${isPending ? 'opacity-60' : ''} transition-opacity`}>
+        {isPending && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/70">
+            <RefreshCw className="h-6 w-6 animate-spin text-purple-500" />
+          </div>
+        )}
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-300 bg-slate-50 text-xs font-semibold uppercase tracking-wider text-slate-600">
+                <th className="px-5 py-3.5 text-left">
+                  {tab === 'proveedores' ? 'Proveedor' : 'Cliente'}
+                </th>
+                <th className="px-5 py-3.5 text-right">Saldo Anterior ($)</th>
+                <th className="px-5 py-3.5 text-right">Kilos del Período</th>
+                <th className="px-5 py-3.5 text-right">Valor Generado ($)</th>
+                <th className="px-5 py-3.5 text-right">Dinero Movido ($)</th>
+                <th className="px-5 py-3.5 text-right">Saldo Final ($)</th>
+              </tr>
+            </thead>
+
+            <tbody className="divide-y divide-gray-50">
+              {filteredRows.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-16 text-center text-sm text-gray-400">
+                    {search
+                      ? 'No hay resultados para esa búsqueda.'
+                      : 'Sin actividad en el período seleccionado.'}
+                  </td>
+                </tr>
+              ) : (
+                filteredRows.map((r, idx) => {
+                  const nombre = nombreRow(r, tab);
+                  const id = tab === 'proveedores'
+                    ? (r as RowProveedor).proveedorId
+                    : (r as RowCliente).clienteId;
+
+                  // Saldo final: positivo = deuda (rojo prov / rojo cli), negativo = crédito (azul)
+                  const saldoFinalPos = r.saldoFinal > 0;
+                  const saldoFinalNeg = r.saldoFinal < 0;
+
+                  // Saldo anterior: contexto de arrastre
+                  const saldoAntPos = r.saldoAnterior > 0;
+
+                  return (
+                    <tr
+                      key={`${tab}-${id}`}
+                      className={`transition-colors hover:bg-gray-50 ${idx % 2 === 0 ? '' : 'bg-gray-50/30'}`}
+                    >
+                      {/* Nombre */}
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-2">
+                          {saldoFinalPos && r.saldoFinal > 5000 && (
+                            <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 text-orange-400" />
+                          )}
+                          {!saldoFinalPos && r.kilosDelPeriodo > 0 && (
+                            <CheckCircle className="h-3.5 w-3.5 flex-shrink-0 text-green-400" />
+                          )}
+                          <span className="font-semibold text-gray-900">{nombre}</span>
+                        </div>
+                      </td>
+
+                      {/* Saldo anterior */}
+                      <td className="px-5 py-4 text-right">
+                        <span className={`font-mono text-xs ${
+                          r.saldoAnterior === 0
+                            ? 'text-gray-400'
+                            : saldoAntPos
+                            ? 'text-orange-600'
+                            : 'text-blue-600'
+                        }`}>
+                          {r.saldoAnterior === 0
+                            ? '—'
+                            : `${saldoAntPos ? '' : '−'}${fmtCurrency(r.saldoAnterior)}`}
+                        </span>
+                      </td>
+
+                      {/* Kilos */}
+                      <td className="px-5 py-4 text-right">
+                        <span className="font-mono text-gray-700">
+                          {r.kilosDelPeriodo > 0 ? fmtKg(r.kilosDelPeriodo) : '—'}
+                        </span>
+                      </td>
+
+                      {/* Valor generado */}
+                      <td className="px-5 py-4 text-right">
+                        <span className="font-mono text-gray-700">
+                          {r.valorGenerado > 0 ? fmtCurrency(r.valorGenerado) : '—'}
+                        </span>
+                      </td>
+
+                      {/* Dinero movido */}
+                      <td className="px-5 py-4 text-right">
+                        <span className="font-mono text-green-600">
+                          {r.dineroMovido > 0 ? fmtCurrency(r.dineroMovido) : '—'}
+                        </span>
+                      </td>
+
+                      {/* Saldo final — el dato más importante */}
+                      <td className="px-5 py-4 text-right">
+                        <span className={`inline-block rounded-lg px-2.5 py-1 font-mono text-xs font-bold ${
+                          r.saldoFinal === 0
+                            ? 'bg-gray-100 text-gray-500'
+                            : saldoFinalPos
+                            ? 'bg-red-50 text-red-700'
+                            : saldoFinalNeg
+                            ? 'bg-blue-50 text-blue-700'
+                            : 'bg-gray-100 text-gray-500'
+                        }`}>
+                          {r.saldoFinal === 0
+                            ? '✓ Saldado'
+                            : saldoFinalPos
+                            ? fmtCurrency(r.saldoFinal)
+                            : `−${fmtCurrency(Math.abs(r.saldoFinal))} a favor`}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+
+            {/* Footer con totales */}
+            {filteredRows.length > 0 && (
+              <tfoot>
+                <tr className="border-t-2 border-gray-200 bg-gray-50 text-xs font-bold text-gray-700">
+                  <td className="px-5 py-3.5">
+                    TOTALES — {filteredRows.length} {tab === 'proveedores' ? 'proveedor' : 'cliente'}
+                    {filteredRows.length !== 1 ? (tab === 'proveedores' ? 'es' : 's') : ''}
+                  </td>
+                  <td className="px-5 py-3.5 text-right font-mono text-gray-500">
+                    {fmtCurrency(filteredRows.reduce((s, r) => s + r.saldoAnterior, 0))}
+                  </td>
+                  <td className="px-5 py-3.5 text-right font-mono text-gray-700">
+                    {fmtKg(totKilos)}
+                  </td>
+                  <td className="px-5 py-3.5 text-right font-mono text-gray-700">
+                    {fmtCurrency(totValor)}
+                  </td>
+                  <td className="px-5 py-3.5 text-right font-mono text-green-700">
+                    {fmtCurrency(totMovido)}
+                  </td>
+                  <td className="px-5 py-3.5 text-right font-mono">
+                    <span className={totSaldo >= 0 ? 'text-red-700' : 'text-blue-700'}>
+                      {totSaldo >= 0
+                        ? fmtCurrency(totSaldo)
+                        : `−${fmtCurrency(Math.abs(totSaldo))} a favor`}
+                    </span>
+                  </td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+
+        {/* Leyenda de colores */}
+        {filteredRows.length > 0 && (
+          <div className="flex flex-wrap items-center gap-4 border-t border-gray-100 px-5 py-3 text-xs text-gray-400">
+            <span className="flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-sm bg-red-100" />
+              Saldo en rojo = deuda pendiente
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-sm bg-emerald-100" />
+              Saldo en verde = saldo a favor
+            </span>
+            <span className="flex items-center gap-1.5">
+              <AlertTriangle className="h-3 w-3 text-orange-400" />
+              Deuda mayor a $5.000
+            </span>
+            <span className="flex items-center gap-1.5">
+              <CheckCircle className="h-3 w-3 text-green-400" />
+              Saldado en el período
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
