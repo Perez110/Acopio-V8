@@ -251,10 +251,10 @@ export default function LiquidacionFleterosClient({ fleteros }: Props) {
       alternateRowStyles: { fillColor: [248, 250, 252] },
       columnStyles: { 0: { cellWidth: 28 }, 1: { cellWidth: 28 } },
       didDrawPage: (data) => {
-        const pageCount = (doc as jsPDF & { internal: { getNumberOfPages: () => number } }).internal.getNumberOfPages();
+        const pageCount = doc.internal.pages.length - 1; // sin la página en blanco final
         doc.setFontSize(8);
         doc.setTextColor(148, 163, 184);
-        doc.text(`Página ${data.pageNumber} de ${pageCount}`, doc.internal.pageSize.width - 30, doc.internal.pageSize.height - 8);
+        doc.text(`Página ${data.pageNumber} de ${pageCount}`, doc.internal.pageSize.getWidth() - 30, doc.internal.pageSize.getHeight() - 8);
       },
     });
 

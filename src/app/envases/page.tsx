@@ -57,7 +57,7 @@ function buildSaldosFromRows(
     }
     const saldo = rawSaldo;
 
-    const envaseId = row.envase_id ?? (row as Record<string, unknown>).envase_id ?? 0;
+    const envaseId = Number(row.envase_id ?? (row as Record<string, unknown>).envase_id ?? 0);
     const envaseNombre = row.envase_nombre ?? (row as Record<string, unknown>).envase_nombre ?? envaseMap.get(envaseId) ?? `Envase #${envaseId}`;
 
     if (!mapByEntity.has(key)) mapByEntity.set(key, []);

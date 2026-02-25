@@ -148,7 +148,7 @@ export default function MovimientosInternosReport() {
         return;
       }
       setRows(result.data);
-      setToast({ type: 'success', msg: `Se encontraron ${result.data.length} movimiento(s).` });
+      setToast({ type: 'success', msg: `Se encontraron ${result.data?.length ?? 0} movimiento(s).` });
     });
   };
 

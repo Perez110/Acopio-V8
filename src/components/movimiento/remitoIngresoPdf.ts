@@ -130,7 +130,8 @@ function drawTable(
   doc: jsPDF,
   data: RemitoIngresoData,
   startY: number,
-  autoTable: (doc: jsPDF, options: unknown) => void,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  autoTable: (doc: jsPDF, options: any) => void,
 ): number {
   const tableHead = [['Producto', 'Tipo Envase', 'Cant.', 'Kilos Brutos', 'Tara (kg)', 'Kilos Netos']];
   const tableBody = data.items.map(p => [
@@ -240,7 +241,8 @@ function drawRemitoHalf(
   data: RemitoIngresoData,
   startY: number,
   copyLabel: 'ORIGINAL' | 'DUPLICADO',
-  autoTable: (doc: jsPDF, options: unknown) => void,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  autoTable: (doc: jsPDF, options: any) => void,
 ): number {
   let y = drawHeader(doc, data, startY, copyLabel);
   y = drawProveedorBox(doc, data, y);

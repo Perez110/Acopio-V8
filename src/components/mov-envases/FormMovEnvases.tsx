@@ -3,7 +3,6 @@
 import { useState, useRef } from 'react';
 import { Plus, Trash2, CheckCircle, AlertCircle, ArrowDownToLine, ArrowUpFromLine } from 'lucide-react';
 import { insertarMovimientosEnvases } from '@/app/inventario/actions';
-import type { Proveedor, Cliente, Fletero, Envase } from '@/types/database';
 
 // ── Tipos ────────────────────────────────────────────────────────────────────
 interface MovimientoLocal {
@@ -19,10 +18,10 @@ type Toast = { type: 'success' | 'error'; msg: string };
 
 // ── Props desde Server Component ─────────────────────────────────────────────
 interface Props {
-  proveedores: Proveedor[];
-  clientes: Cliente[];
-  fleteros: Fletero[];
-  envases: Envase[];
+  proveedores: { id: number; nombre: string | null }[];
+  clientes: { id: number; nombre: string | null }[];
+  fleteros: { id: number; nombre: string | null }[];
+  envases: { id: number; nombre: string | null }[];
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

@@ -72,10 +72,10 @@ export default function SalidaFruta() {
       supabase.from('Productos').select('id, nombre').eq('activo', true).order('nombre'),
       supabase.from('Envases').select('id, nombre').eq('activo', true).order('nombre'),
     ]).then(([{ data: cli }, { data: flet }, { data: prod }, { data: env }]) => {
-      setClientes(cli ?? []);
-      setFleteros(flet ?? []);
-      setProductos(prod ?? []);
-      setEnvases(env ?? []);
+      setClientes((cli ?? []) as Cliente[]);
+      setFleteros((flet ?? []) as Fletero[]);
+      setProductos((prod ?? []) as Producto[]);
+      setEnvases((env ?? []) as Envase[]);
       setLoading(false);
     });
   }, []);

@@ -19,19 +19,19 @@ interface DashboardKPIsRow {
   stock_bines_actual?: number | null;
 }
 
-// Tipos para las listas limitadas (con JOIN a Proveedores/Clientes)
+// Tipos para las listas limitadas (Supabase devuelve relaciones como array)
 interface UltimaEntradaRow {
   id: number;
   fecha_entrada: string | null;
   peso_neto_kg: number | null;
-  Proveedores: { nombre: string | null } | null;
+  Proveedores: { nombre: string | null }[] | null;
 }
 
 interface UltimaSalidaRow {
   id: number;
   fecha_salida: string | null;
   peso_salida_acopio_kg: number | null;
-  Clientes: { nombre: string | null } | null;
+  Clientes: { nombre: string | null }[] | null;
 }
 
 function formatDate(d: string | null): string {
@@ -174,8 +174,8 @@ export default async function DashboardPage() {
                   <span className="text-sm text-gray-500 shrink-0">
                     {formatDate(e.fecha_entrada)}
                   </span>
-                  <span className="text-sm font-medium text-gray-900 truncate min-w-0" title={e.Proveedores?.nombre ?? undefined}>
-                    {e.Proveedores?.nombre ?? '—'}
+                  <span className="text-sm font-medium text-gray-900 truncate min-w-0" title={e.Proveedores?.[0]?.nombre ?? undefined}>
+                    {e.Proveedores?.[0]?.nombre ?? '—'}
                   </span>
                   <span className="font-mono text-sm font-semibold text-gray-900 text-right shrink-0">
                     {formatNumber(e.peso_neto_kg ?? 0)} kg
@@ -200,8 +200,8 @@ export default async function DashboardPage() {
                   <span className="text-sm text-gray-500 shrink-0">
                     {formatDate(s.fecha_salida)}
                   </span>
-                  <span className="text-sm font-medium text-gray-900 truncate min-w-0" title={s.Clientes?.nombre ?? undefined}>
-                    {s.Clientes?.nombre ?? '—'}
+                  <span className="text-sm font-medium text-gray-900 truncate min-w-0" title={s.Clientes?.[0]?.nombre ?? undefined}>
+                    {s.Clientes?.[0]?.nombre ?? '—'}
                   </span>
                   <span className="font-mono text-sm font-semibold text-gray-900 text-right shrink-0">
                     {formatNumber(s.peso_salida_acopio_kg ?? 0)} kg

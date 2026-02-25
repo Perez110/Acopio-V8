@@ -3,8 +3,11 @@
 import { useState } from 'react';
 import { ArrowLeftRight, Scale } from 'lucide-react';
 import FormMovEnvases from '@/components/mov-envases/FormMovEnvases';
-import SaldosClient, { type SaldoEntidad } from '@/components/saldos-envases/SaldosClient';
-import type { Proveedor, Cliente, Fletero, Envase } from '@/types/database';
+import SaldosClient from '@/components/saldos-envases/SaldosClient';
+import type { SaldoEntidad } from '@/components/saldos-envases/SaldosClient';
+
+type EntidadMinima = { id: number; nombre: string | null };
+type EnvaseMinimo = { id: number; nombre: string | null };
 
 type Stats = {
   total: number;
@@ -13,11 +16,10 @@ type Stats = {
 };
 
 interface Props {
-  // Datos para el formulario de movimientos
-  proveedores: Proveedor[];
-  clientes: Cliente[];
-  fleteros: Fletero[];
-  envases: Envase[];
+  proveedores: EntidadMinima[];
+  clientes: EntidadMinima[];
+  fleteros: EntidadMinima[];
+  envases: EnvaseMinimo[];
   // Datos precalculados para los saldos (vista v_saldos_envases_total)
   saldosPendientes: SaldoEntidad[];
   saldosPagados: SaldoEntidad[];

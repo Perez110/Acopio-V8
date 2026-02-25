@@ -74,7 +74,8 @@ export async function getChequesPaginado(
     .order('fecha_pago', { ascending: true, nullsFirst: false })
     .order('id', { ascending: false });
 
-  if (estado && estado !== '') {
+  // Aplicar filtro solo cuando se eligió un estado concreto (no '' ni undefined)
+  if (estado !== undefined && estado !== '') {
     query = query.eq('estado', estado);
   }
 

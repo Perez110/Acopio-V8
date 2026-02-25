@@ -24,7 +24,6 @@ import {
   type HistorialPaginadoResult,
   type ChequeEnCarteraOption,
 } from '@/app/cobros-pagos/actions';
-import type { CuentaFinanciera, Cliente, Proveedor, Fletero } from '@/types/database';
 
 // ── Tipos exportados para uso en page.tsx ────────────────────────────────────
 export interface HistorialItem {
@@ -37,11 +36,23 @@ export interface HistorialItem {
   cuenta_financiera_id: number | null;
 }
 
+/** Catálogo mínimo para listas (la página solo carga id, nombre y opcionalmente tipo). */
+interface EntidadMinima {
+  id: number;
+  nombre: string | null;
+}
+
+interface CuentaMinima {
+  id: number;
+  nombre: string | null;
+  tipo: string | null;
+}
+
 interface Props {
-  clientes: Cliente[];
-  proveedores: Proveedor[];
-  fleteros: Fletero[];
-  cuentas: CuentaFinanciera[];
+  clientes: EntidadMinima[];
+  proveedores: EntidadMinima[];
+  fleteros: EntidadMinima[];
+  cuentas: CuentaMinima[];
   historialInicial: HistorialItem[];
   totalInicial: number;
   chequesEnCartera: ChequeEnCarteraOption[];

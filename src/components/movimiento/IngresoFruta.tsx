@@ -120,10 +120,10 @@ export default function IngresoFruta() {
       supabase.from('Productos').select('id, nombre, precio_compra_kg').eq('activo', true).order('nombre'),
       supabase.from('Envases').select('id, nombre, tara_kg').eq('activo', true).order('nombre'),
     ]).then(([{ data: prov }, { data: flet }, { data: prod }, { data: env }]) => {
-      setProveedores(prov ?? []);
-      setFleteros(flet ?? []);
-      setProductos(prod ?? []);
-      setEnvases(env ?? []);
+      setProveedores((prov ?? []) as Proveedor[]);
+      setFleteros((flet ?? []) as Fletero[]);
+      setProductos((prod ?? []) as Producto[]);
+      setEnvases((env ?? []) as Envase[]);
       setLoading(false);
     });
   }, []);

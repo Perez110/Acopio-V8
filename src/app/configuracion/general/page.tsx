@@ -15,7 +15,12 @@ export default async function ConfiguracionGeneralPage() {
       </div>
 
       <div className="max-w-xl rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
-        <form action={updateConfiguracion} className="space-y-6">
+        <form
+          action={async (formData: FormData) => {
+            await updateConfiguracion(formData);
+          }}
+          className="space-y-6"
+        >
           <div>
             <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-slate-500">
               Nombre de la Empresa
