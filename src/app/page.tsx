@@ -8,8 +8,7 @@ import {
 import { supabaseServer } from '@/lib/supabase-server';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 
-// Revalidar cada 60 s para que los KPIs no queden obsoletos
-export const revalidate = 60;
+export const dynamic = 'force-dynamic';
 
 // Tipo que devuelve la RPC get_dashboard_kpis (una fila)
 interface DashboardKPIsRow {

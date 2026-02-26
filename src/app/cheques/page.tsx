@@ -2,7 +2,7 @@ import { FileText } from 'lucide-react';
 import ChequesClient from '@/components/cheques/ChequesClient';
 import { getChequesPaginado, getChequesKPIs } from '@/app/cheques/actions';
 
-export const revalidate = 60;
+export const dynamic = 'force-dynamic';
 
 export default async function ChequesPage() {
   const [resultTabla, kpis] = await Promise.all([
