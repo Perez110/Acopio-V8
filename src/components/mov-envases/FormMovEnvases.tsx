@@ -262,38 +262,86 @@ export default function FormMovEnvases({ proveedores, clientes, fleteros, envase
           </select>
         </div>
 
-        {/* Ingreso / Salida */}
-        <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div className="rounded-xl border border-green-100 bg-green-50/50 p-4">
-            <label className="mb-2 flex items-center gap-2 text-xs font-semibold text-green-700">
-              <ArrowDownToLine className="h-4 w-4" />
-              Ingreso (Devolución Vacíos)
-            </label>
-            <input
-              type="number"
-              min={0}
-              value={cantIngreso}
-              onChange={e => setCantIngreso(e.target.value === '' ? '' : Number(e.target.value))}
-              className="w-full rounded-lg border border-green-200 bg-white px-3 py-2 text-sm focus:border-green-400 focus:outline-none focus:ring-2 focus:ring-green-100"
-            />
-            <p className="mt-1.5 text-xs text-gray-400">Envases vacíos devueltos</p>
-          </div>
-
-          <div className="rounded-xl border border-orange-100 bg-orange-50/50 p-4">
-            <label className="mb-2 flex items-center gap-2 text-xs font-semibold text-orange-700">
-              <ArrowUpFromLine className="h-4 w-4" />
-              Salida (Entrega Vacíos)
-            </label>
-            <input
-              type="number"
-              min={0}
-              value={cantSalida}
-              onChange={e => setCantSalida(e.target.value === '' ? '' : Number(e.target.value))}
-              className="w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-100"
-            />
-            <p className="mt-1.5 text-xs text-gray-400">Envases vacíos entregados</p>
-          </div>
-        </div>
+        {/* Ingreso / Salida — títulos y descripciones dinámicos según tipo de entidad */}
+        {(() => {
+          const esProveedor = tipoEntidad === 'proveedor';
+          // PROVEEDOR: Caja 1 = Salida, Caja 2 = Ingreso. CLIENTE: Caja 1 = Ingreso, Caja 2 = Salida.
+          const caja1 = esProveedor
+            ? {
+                tipo: 'salida' as const,
+                titulo: 'Se le entrega vacíos',
+                descripcion: 'El stock del sistema resta y el saldo del proveedor aumenta (deuda hacia el acopio).',
+                valor: cantSalida,
+                setValor: setCantSalida,
+                color: 'orange',
+              }
+            : {
+                tipo: 'ingreso' as const,
+                titulo: 'Ingresan envases',
+                descripcion: 'Provenientes del cliente, por lo tanto el stock del acopio aumenta en envases vacíos, y la deuda del acopio hacia el cliente aumenta.',
+                valor: cantIngreso,
+                setValor: setCantIngreso,
+                color: 'green',
+              };
+          const caja2 = esProveedor
+            ? {
+                tipo: 'ingreso' as const,
+                titulo: 'Devuelve vacíos',
+                descripcion: 'El stock del acopio aumenta, y el saldo del proveedor disminuye.',
+                valor: cantIngreso,
+                setValor: setCantIngreso,
+                color: 'green',
+              }
+            : {
+                tipo: 'salida' as const,
+                titulo: 'Devuelvo envases vacíos',
+                descripcion: 'Se devuelven vacíos al cliente para saldar deuda. Resta al saldo de deuda y resta al inventario de envases vacíos del acopio.',
+                valor: cantSalida,
+                setValor: setCantSalida,
+                color: 'orange',
+              };
+          const renderCaja = (c: typeof caja1) => (
+            <div
+              key={c.tipo}
+              className={`rounded-xl border p-4 ${
+                c.color === 'green'
+                  ? 'border-green-100 bg-green-50/50'
+                  : 'border-orange-100 bg-orange-50/50'
+              }`}
+            >
+              <label
+                className={`mb-2 flex items-center gap-2 text-xs font-semibold ${
+                  c.color === 'green' ? 'text-green-700' : 'text-orange-700'
+                }`}
+              >
+                {c.tipo === 'ingreso' ? (
+                  <ArrowDownToLine className="h-4 w-4" />
+                ) : (
+                  <ArrowUpFromLine className="h-4 w-4" />
+                )}
+                {c.titulo}
+              </label>
+              <input
+                type="number"
+                min={0}
+                value={c.valor}
+                onChange={e => c.setValor(e.target.value === '' ? '' : Number(e.target.value))}
+                className={`w-full rounded-lg border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 ${
+                  c.color === 'green'
+                    ? 'border-green-200 focus:border-green-400 focus:ring-green-100'
+                    : 'border-orange-200 focus:border-orange-400 focus:ring-orange-100'
+                }`}
+              />
+              <p className="mt-1.5 text-xs text-gray-500">{c.descripcion}</p>
+            </div>
+          );
+          return (
+            <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {renderCaja(caja1)}
+              {renderCaja(caja2)}
+            </div>
+          );
+        })()}
 
         {/* Botón agregar */}
         <div className="mb-4 flex justify-end">
@@ -307,11 +355,20 @@ export default function FormMovEnvases({ proveedores, clientes, fleteros, envase
           </button>
         </div>
 
-        {/* Info box */}
+        {/* Info box — dinámico según tipo de entidad */}
         <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-xs text-blue-700">
           <p className="font-semibold mb-1">🔄 Movimiento de Envases Vacíos</p>
-          <p><strong>Ingreso:</strong> El proveedor devuelve envases vacíos al acopio (suma a Stock Vacíos)</p>
-          <p><strong>Salida:</strong> El acopio entrega envases vacíos al proveedor (resta del Stock Vacíos)</p>
+          {tipoEntidad === 'proveedor' ? (
+            <>
+              <p><strong>Se le entrega vacíos:</strong> El stock del sistema resta y el saldo del proveedor aumenta (deuda hacia el acopio).</p>
+              <p><strong>Devuelve vacíos:</strong> El stock del acopio aumenta y el saldo del proveedor disminuye.</p>
+            </>
+          ) : (
+            <>
+              <p><strong>Ingresan envases:</strong> Stock del acopio aumenta y la deuda del acopio hacia el cliente aumenta.</p>
+              <p><strong>Devuelvo envases vacíos:</strong> Resta al saldo de deuda y al inventario de envases vacíos del acopio.</p>
+            </>
+          )}
           <p className="mt-1 text-blue-600">Los envases llenos (con fruta) se gestionan en Ingreso/Salida de Fruta.</p>
         </div>
 
