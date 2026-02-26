@@ -80,3 +80,8 @@ export async function updateConfiguracion(formData: FormData): Promise<{ ok: boo
   }
 }
 
+export async function submitConfiguracionForm(formData: FormData): Promise<void> {
+  await updateConfiguracion(formData);
+}
+
+
