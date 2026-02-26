@@ -55,7 +55,7 @@ export default async function DashboardPage() {
     p_anio,
   });
 
-  // Últimas 5 entradas y 5 salidas del MES ACTUAL, con nombre de proveedor/cliente
+  // Últimas 10 entradas y 10 salidas del MES ACTUAL (límite estricto para rendimiento)
   const [
     { data: ultimasEntradas },
     { data: ultimasSalidas },
@@ -65,15 +65,15 @@ export default async function DashboardPage() {
       .select('id, fecha_entrada, peso_neto_kg, Proveedores(nombre)')
       .gte('fecha_entrada', startOfMonth)
       .lte('fecha_entrada', endOfMonth)
-      .order('created_at', { ascending: false })
-      .limit(5),
+      .order('fecha_entrada', { ascending: false })
+      .limit(10),
     supabaseServer
       .from('Salidas_Fruta')
       .select('id, fecha_salida, peso_salida_acopio_kg, Clientes(nombre)')
       .gte('fecha_salida', startOfMonth)
       .lte('fecha_salida', endOfMonth)
-      .order('created_at', { ascending: false })
-      .limit(5),
+      .order('fecha_salida', { ascending: false })
+      .limit(10),
   ]);
 
   const row = (kpisRows ?? [])[0] as DashboardKPIsRow | undefined;

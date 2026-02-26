@@ -5,12 +5,12 @@ import { useRouter } from 'next/navigation';
 import {
   Banknote, Building2, Wallet, Plus, Pencil, CheckCircle,
   AlertCircle, Power, PowerOff, TrendingUp, TrendingDown, Scale,
-  ArrowLeftRight, Loader2,
+  ArrowLeftRight, Loader2, List,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import Modal from '@/components/ui/Modal';
 import type { CuentaFinanciera } from '@/types/database';
-import { registrarMovimientoInterno } from '@/app/cajas-bancos/actions';
+import { registrarMovimientoInterno, getHistorialCuenta, type MovimientoHistorialItem } from '@/app/cajas-bancos/actions';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 export interface CuentaConSaldo extends CuentaFinanciera {
@@ -130,6 +130,16 @@ export default function CajasBancosClient({
   const [movSaving, setMovSaving] = useState(false);
   const [movError, setMovError] = useState('');
 
+  // ── Estado: historial / conciliación ─────────────────────────────────────
+  const [historialModalOpen, setHistorialModalOpen] = useState(false);
+  const [historialCuentaId, setHistorialCuentaId] = useState<number | null>(null);
+  const [historialCuentaNombre, setHistorialCuentaNombre] = useState('');
+  const [historialDesde, setHistorialDesde] = useState('');
+  const [historialHasta, setHistorialHasta] = useState('');
+  const [historialItems, setHistorialItems] = useState<MovimientoHistorialItem[]>([]);
+  const [historialLoading, setHistorialLoading] = useState(false);
+  const [historialError, setHistorialError] = useState('');
+
   // Sincronizar estado local con datos del servidor cuando cambian (p. ej. tras router.refresh())
   useEffect(() => {
     setCuentas(initCuentas);
@@ -168,6 +178,39 @@ export default function CajasBancosClient({
     setMovForm(emptyMovForm());
     setMovError('');
     setMovModalOpen(true);
+  }
+
+  function getDefaultRangoMes(): { desde: string; hasta: string } {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    return { desde: `${y}-${m}-01`, hasta: `${y}-${m}-${d}` };
+  }
+
+  function openHistorialModal(cuenta: CuentaConSaldo) {
+    const { desde, hasta } = getDefaultRangoMes();
+    setHistorialCuentaId(cuenta.id);
+    setHistorialCuentaNombre(cuenta.nombre ?? '');
+    setHistorialDesde(desde);
+    setHistorialHasta(hasta);
+    setHistorialItems([]);
+    setHistorialError('');
+    setHistorialModalOpen(true);
+  }
+
+  async function handleHistorialBuscar() {
+    if (historialCuentaId == null) return;
+    setHistorialLoading(true);
+    setHistorialError('');
+    const { data, error } = await getHistorialCuenta(historialCuentaId, historialDesde, historialHasta);
+    setHistorialLoading(false);
+    if (error) {
+      setHistorialError(error);
+      if (error.includes('31 días')) showToast('error', error);
+      return;
+    }
+    setHistorialItems(data ?? []);
   }
 
   // ── Submit movimiento interno ──────────────────────────────────────────────
@@ -347,6 +390,7 @@ export default function CajasBancosClient({
             cuenta={c}
             onEdit={() => openEdit(c)}
             onToggle={() => toggleActivo(c)}
+            onVerHistorial={() => openHistorialModal(c)}
           />
         ))}
       </div>
@@ -508,6 +552,87 @@ export default function CajasBancosClient({
         </div>
       </Modal>
 
+      {/* ── Modal Conciliación: Historial de cuenta ─────────────────────────── */}
+      <Modal
+        open={historialModalOpen}
+        onClose={() => { if (!historialLoading) setHistorialModalOpen(false); }}
+        title="Conciliación bancaria"
+        subtitle={historialCuentaId != null ? `Historial: ${historialCuentaNombre}` : undefined}
+        size="lg"
+      >
+        <div className="space-y-4 px-6 py-5">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">Desde</label>
+              <input
+                type="date"
+                value={historialDesde}
+                onChange={e => setHistorialDesde(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-100"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">Hasta</label>
+              <input
+                type="date"
+                value={historialHasta}
+                onChange={e => setHistorialHasta(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-100"
+              />
+            </div>
+          </div>
+          {historialError && (
+            <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700">
+              <AlertCircle className="h-4 w-4 flex-shrink-0" />
+              {historialError}
+            </div>
+          )}
+          <div className="flex justify-end">
+            <button
+              onClick={handleHistorialBuscar}
+              disabled={historialLoading}
+              className="flex items-center gap-2 rounded-xl bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-900 disabled:opacity-50"
+            >
+              {historialLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <List className="h-4 w-4" />}
+              {historialLoading ? 'Buscando…' : 'Buscar'}
+            </button>
+          </div>
+          {historialItems.length > 0 && (
+            <div className="overflow-x-auto rounded-xl border border-slate-100">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  <tr>
+                    <th className="px-4 py-3 text-left">Fecha</th>
+                    <th className="px-4 py-3 text-left">Concepto</th>
+                    <th className="px-4 py-3 text-center">Tipo</th>
+                    <th className="px-4 py-3 text-right">Monto</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {historialItems.map((it, idx) => (
+                    <tr key={idx} className="hover:bg-slate-50/70">
+                      <td className="px-4 py-2.5 text-slate-700">{it.fecha}</td>
+                      <td className="px-4 py-2.5 text-slate-900">{it.concepto}</td>
+                      <td className="px-4 py-2.5 text-center">
+                        <span className={it.tipo === 'INGRESO' ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
+                          {it.tipo}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-right font-mono">
+                        {it.tipo === 'INGRESO' ? '+' : '−'}${Math.abs(it.monto).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {!historialLoading && historialItems.length === 0 && historialCuentaId != null && historialError === '' && (
+            <p className="text-center text-sm text-slate-500">Elegí un rango y hacé clic en Buscar para ver el historial.</p>
+          )}
+        </div>
+      </Modal>
+
       {/* ── Modal Nueva / Editar Cuenta ───────────────────────────────────── */}
       <Modal
         open={modalOpen}
@@ -608,8 +733,8 @@ export default function CajasBancosClient({
 
 // ── AccountCard ────────────────────────────────────────────────────────────────
 function AccountCard({
-  cuenta, onEdit, onToggle,
-}: { cuenta: CuentaConSaldo; onEdit: () => void; onToggle: () => void }) {
+  cuenta, onEdit, onToggle, onVerHistorial,
+}: { cuenta: CuentaConSaldo; onEdit: () => void; onToggle: () => void; onVerHistorial?: () => void }) {
   const isPositive = cuenta.saldoActual >= 0;
 
   return (
@@ -629,6 +754,11 @@ function AccountCard({
         </div>
         {/* Acciones (visibles al hover) */}
         <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+          {onVerHistorial && (
+            <button onClick={onVerHistorial} title="Ver Historial" className="rounded-lg p-1.5 text-gray-400 hover:bg-purple-50 hover:text-purple-600">
+              <List className="h-3.5 w-3.5" />
+            </button>
+          )}
           <button onClick={onEdit} title="Editar" className="rounded-lg p-1.5 text-gray-400 hover:bg-blue-50 hover:text-blue-600">
             <Pencil className="h-3.5 w-3.5" />
           </button>
@@ -669,6 +799,18 @@ function AccountCard({
             </p>
           </div>
         </div>
+        {onVerHistorial && (
+          <div className="mt-3 pt-3 border-t border-gray-50">
+            <button
+              type="button"
+              onClick={onVerHistorial}
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-slate-50 py-2 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-800"
+            >
+              <List className="h-3.5 w-3.5" />
+              Ver Historial
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
