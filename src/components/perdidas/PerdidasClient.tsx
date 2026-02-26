@@ -59,6 +59,9 @@ export default function PerdidasClient({ filas: filasIniciales, total: totalInic
 
   const totalPages = Math.max(1, Math.ceil(totalItems / ITEMS_PER_PAGE));
 
+  const kilosTotalesFromTabla = filas.reduce((s, f) => s + f.totalPerdidoKg, 0);
+  const perdidaMonetizadaFromTabla = filas.reduce((s, f) => s + f.valorMonetizado, 0);
+
   const aplicarFiltros = async () => {
     setLoading(true);
     try {
@@ -200,15 +203,15 @@ export default function PerdidasClient({ filas: filasIniciales, total: totalInic
         </button>
       </div>
 
-      {/* ── KPI Cards (datos globales independientes de la página) ────────────── */}
+      {/* ── KPI Cards (calculados desde la tabla mostrada) ───────────────────── */}
       <div className="grid gap-4 sm:grid-cols-3">
         <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">Kilos Totales Perdidos</p>
-          <p className="mt-1 text-2xl font-bold text-red-600">{fmtKg(kpis.kilosTotalesPerdidos)} kg</p>
+          <p className="mt-1 text-2xl font-bold text-red-600">{fmtKg(kilosTotalesFromTabla)} kg</p>
         </div>
         <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">Pérdida Monetizada</p>
-          <p className="mt-1 text-2xl font-bold text-red-800">{fmtMoney(kpis.perdidaMonetizada)}</p>
+          <p className="mt-1 text-2xl font-bold text-red-800">{fmtMoney(perdidaMonetizadaFromTabla)}</p>
         </div>
         <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">Principal Motivo</p>

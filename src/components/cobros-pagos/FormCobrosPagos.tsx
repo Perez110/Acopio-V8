@@ -4,6 +4,8 @@ import { useState, useRef } from 'react';
 import {
   TrendingUp,
   TrendingDown,
+  Scale,
+  Calendar,
   CheckCircle,
   AlertCircle,
   AlertTriangle,
@@ -133,10 +135,17 @@ export default function FormCobrosPagos({
   const [paginaActual, setPaginaActual] = useState<number>(1);
   const ITEMS_PER_PAGE = 50;
   const [loadingPagina, setLoadingPagina] = useState(false);
+  const [desdeHistorial, setDesdeHistorial] = useState('');
+  const [hastaHistorial, setHastaHistorial] = useState('');
   // ID del movimiento que se está eliminando (null = ninguno)
   const [deletingId, setDeletingId] = useState<number | null>(null);
   // Movimiento pendiente de confirmación en el modal (null = modal cerrado)
   const [movimientoAEliminar, setMovimientoAEliminar] = useState<HistorialItem | null>(null);
+
+  const MAX_DIAS_RANGO = 31;
+  const kpiCobros = historial.reduce((s, h) => s + (h.tipo === 'INGRESO' ? (h.monto ?? 0) : 0), 0);
+  const kpiPagos = historial.reduce((s, h) => s + (h.tipo === 'EGRESO' ? (h.monto ?? 0) : 0), 0);
+  const kpiBalance = kpiCobros - kpiPagos;
 
   const accentColor = operacion === 'cobro' ? 'green' : 'orange';
   const ringClass =
@@ -170,16 +179,40 @@ export default function FormCobrosPagos({
     setChequeIdSelected('');
   }
 
+  function validarRangoFechas(desde: string, hasta: string): boolean {
+    if (!desde || !hasta) return true;
+    const d1 = new Date(desde);
+    const d2 = new Date(hasta);
+    const diffMs = d2.getTime() - d1.getTime();
+    const diffDias = Math.ceil(diffMs / (24 * 60 * 60 * 1000));
+    if (diffDias > MAX_DIAS_RANGO) {
+      showToast('error', 'Para optimizar el sistema, el rango máximo de consulta es de 31 días.');
+      return false;
+    }
+    return true;
+  }
+
   async function cargarPagina(page: number) {
+    if (desdeHistorial && hastaHistorial && !validarRangoFechas(desdeHistorial, hastaHistorial)) return;
     setLoadingPagina(true);
     try {
-      const result: HistorialPaginadoResult = await getHistorialMovimientos(page, ITEMS_PER_PAGE);
+      const result: HistorialPaginadoResult = await getHistorialMovimientos(
+        page,
+        ITEMS_PER_PAGE,
+        desdeHistorial || undefined,
+        hastaHistorial || undefined
+      );
       setHistorial(result.items as HistorialItem[]);
       setTotalItems(result.total);
       setPaginaActual(page);
     } finally {
       setLoadingPagina(false);
     }
+  }
+
+  function aplicarFiltroFechas() {
+    if (desdeHistorial && hastaHistorial && !validarRangoFechas(desdeHistorial, hastaHistorial)) return;
+    cargarPagina(1);
   }
 
   async function refetchHistorial() {
@@ -680,10 +713,72 @@ export default function FormCobrosPagos({
 
       {/* ── Historial (ocupa 3/5 en xl) ───────────────────────────────────── */}
       <div className="xl:col-span-3">
+        {/* KPIs dinámicos desde la tabla renderizada */}
+        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">
+              <TrendingUp className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Cobros</p>
+              <p className="mt-0.5 text-lg font-bold text-emerald-700">{formatCurrency(kpiCobros)}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500">
+              <TrendingDown className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Pagos</p>
+              <p className="mt-0.5 text-lg font-bold text-slate-900">{formatCurrency(kpiPagos)}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl ${kpiBalance >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+              <Scale className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Balance</p>
+              <p className={`mt-0.5 text-lg font-bold ${kpiBalance >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
+                {kpiBalance >= 0 ? '+' : ''}{formatCurrency(kpiBalance)}
+              </p>
+            </div>
+          </div>
+        </div>
+
         <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
           <div className="border-b border-gray-100 px-5 py-4">
             <h3 className="text-sm font-semibold text-gray-900">Últimos movimientos</h3>
             <p className="text-xs text-gray-400">Se actualiza al registrar</p>
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-slate-400" />
+                <label className="text-xs font-medium text-slate-600">Desde</label>
+                <input
+                  type="date"
+                  value={desdeHistorial}
+                  onChange={e => setDesdeHistorial(e.target.value)}
+                  className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:border-green-400 focus:outline-none focus:ring-1 focus:ring-green-100"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-medium text-slate-600">Hasta</label>
+                <input
+                  type="date"
+                  value={hastaHistorial}
+                  onChange={e => setHastaHistorial(e.target.value)}
+                  className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:border-green-400 focus:outline-none focus:ring-1 focus:ring-green-100"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={aplicarFiltroFechas}
+                disabled={loadingPagina}
+                className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-slate-600 disabled:opacity-50"
+              >
+                Filtrar
+              </button>
+            </div>
           </div>
 
           {historial.length === 0 ? (

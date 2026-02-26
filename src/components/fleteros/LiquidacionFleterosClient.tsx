@@ -17,6 +17,7 @@ interface ViajeRow {
   remito_nro: string | null;
   peso_llegada_cliente_kg: number | null;
   peso_salida_acopio_kg: number | null;
+  estado_conciliacion?: string | null;
 }
 
 interface PagoRow {
@@ -131,12 +132,12 @@ export default function LiquidacionFleterosClient({ fleteros }: Props) {
       { data: pagosRaw,   error: errPagos   },
       { data: vaciosRaw,  error: errVacios  },
     ] = await Promise.all([
-      // ① Viajes de fruta conciliados
+      // ① Viajes de fruta: TODAS las Salidas (despachos) del fletero en el período
+      //    Incluye pendientes y conciliados; kilos = llegada si conciliado, sino peso salida acopio
       supabase
         .from('Salidas_Fruta')
-        .select('id, fecha_salida, created_at, remito_nro, peso_llegada_cliente_kg, peso_salida_acopio_kg')
+        .select('id, fecha_salida, created_at, remito_nro, peso_llegada_cliente_kg, peso_salida_acopio_kg, estado_conciliacion')
         .eq('fletero_id', Number(fleteroId))
-        .eq('estado_conciliacion', 'CONCILIADO')
         .gte('created_at', tsDesde)
         .lte('created_at', tsHasta)
         .order('fecha_salida', { ascending: true }),
@@ -177,8 +178,13 @@ export default function LiquidacionFleterosClient({ fleteros }: Props) {
   const precioPorKg       = fleteroSel?.precio_por_kg       ?? 0;
   const tarifaVacios      = fleteroSel?.precio_viaje_vacios ?? 0;
 
-  const kilosTotales      = viajes.reduce((s, v) =>
-    s + Number(v.peso_llegada_cliente_kg ?? v.peso_salida_acopio_kg ?? 0), 0);
+  function kilosViaje(v: ViajeRow): number {
+    const llegada = v.peso_llegada_cliente_kg ?? 0;
+    const salida  = v.peso_salida_acopio_kg ?? 0;
+    if (v.estado_conciliacion === 'CONCILIADO' && llegada > 0) return llegada;
+    return salida;
+  }
+  const kilosTotales      = viajes.reduce((s, v) => s + kilosViaje(v), 0);
 
   const valorViajes       = kilosTotales * precioPorKg;
   const valorVacios       = vaciosMovs.length * tarifaVacios;
@@ -189,7 +195,7 @@ export default function LiquidacionFleterosClient({ fleteros }: Props) {
   // ── Tabla unificada ───────────────────────────────────────────────────────
   const movimientos: MovUnificado[] = [
     ...viajes.map<MovUnificado>(v => {
-      const kg = Number(v.peso_llegada_cliente_kg ?? v.peso_salida_acopio_kg ?? 0);
+      const kg = kilosViaje(v);
       return { tipo: 'VIAJE', fecha: v.fecha_salida ?? v.created_at.slice(0, 10), viaje: v, kilos: kg, costo: kg * precioPorKg };
     }),
     ...pagos.map<MovUnificado>(p => ({
@@ -344,7 +350,7 @@ export default function LiquidacionFleterosClient({ fleteros }: Props) {
             <KpiCard
               label="Kilos Transportados"
               value={fmtKilos(kilosTotales)}
-              sub={`${viajes.length} viaje${viajes.length !== 1 ? 's' : ''} de fruta conciliados`}
+              sub={`${viajes.length} viaje${viajes.length !== 1 ? 's' : ''} (salidas/despachos de fruta)`}
               icon={Weight}
             />
             <KpiCard

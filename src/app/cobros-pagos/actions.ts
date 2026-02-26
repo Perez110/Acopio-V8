@@ -101,19 +101,25 @@ export interface HistorialPaginadoResult {
 
 export async function getHistorialMovimientos(
   page: number = 1,
-  pageSize: number = 50
+  pageSize: number = 50,
+  desde?: string | null,
+  hasta?: string | null
 ): Promise<HistorialPaginadoResult> {
   const from = (page - 1) * pageSize;
   const to = from + pageSize - 1;
 
-  const { data, count, error } = await supabaseServer
+  let query = supabaseServer
     .from('Movimientos_Financieros')
     .select(
       'id, fecha, tipo, monto, descripcion, metodo_pago, cuenta_financiera_id',
       { count: 'exact' }
     )
-    .order('created_at', { ascending: false })
-    .range(from, to);
+    .order('created_at', { ascending: false });
+
+  if (desde) query = query.gte('fecha', desde);
+  if (hasta) query = query.lte('fecha', hasta);
+
+  const { data, count, error } = await query.range(from, to);
 
   if (error) {
     console.error('[getHistorialMovimientos] error:', error);
