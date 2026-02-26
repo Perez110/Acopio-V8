@@ -84,24 +84,73 @@ function leerNumeroCampo(
   return 0;
 }
 
-function leerEntregados(row: HistorialEnvaseRow): number {
-  // Soporta distintos nombres que pueda devolver la vista/RPC
-  return leerNumeroCampo(row, 'entregados', [
+/** Lee tipo de movimiento si existe (ej. SALIDA_OCUPADO, INGRESO, ENTRADA, SALIDA). */
+function leerTipoMovimiento(row: HistorialEnvaseRow): string {
+  const r = row as unknown as Record<string, unknown>;
+  for (const key of ['tipo_movimiento', 'tipo_operacion', 'tipo']) {
+    if (!(key in r)) continue;
+    const v = r[key];
+    if (typeof v === 'string' && v.trim()) return v.trim().toUpperCase();
+  }
+  return '';
+}
+
+/**
+ * Obtiene cargo (entregados) y abono (devueltos) por fila.
+ * Primero intenta columnas explícitas; si ambas dan 0, usa un único campo "cantidad"
+ * y asigna a cargo o abono según tipo_movimiento o el texto del concepto
+ * (igual que la lógica de la UI: Salida/despacho/Remito → cargo; Ingreso/Entrada → abono).
+ */
+function getCargoYAbono(row: HistorialEnvaseRow): { cargo: number; abono: number } {
+  const cargo = leerNumeroCampo(row, 'entregados', [
     'cargo',
     'cantidad_cargo',
     'cantidad_entregados',
-    'cantidad',
-    'ingreso',
   ]);
-}
-
-function leerDevueltos(row: HistorialEnvaseRow): number {
-  return leerNumeroCampo(row, 'devueltos', [
+  const abono = leerNumeroCampo(row, 'devueltos', [
     'abono',
     'cantidad_abono',
     'cantidad_devueltos',
     'egreso',
   ]);
+
+  if (cargo !== 0 || abono !== 0) return { cargo, abono };
+
+  const cantidadUnica = leerNumeroCampo(row, 'cantidad', [
+    'cantidad_movimiento',
+    'cantidad_salida',
+    'cantidad_entrada',
+    'cantidad_ingreso',
+    'cantidad_egreso',
+  ]);
+  if (cantidadUnica === 0) return { cargo: 0, abono: 0 };
+
+  const tipo = leerTipoMovimiento(row);
+  const concepto = (typeof (row as unknown as Record<string, unknown>).concepto === 'string')
+    ? (row as unknown as Record<string, unknown>).concepto as string
+    : '';
+
+  const conceptoLower = concepto.toLowerCase();
+
+  const esSalida =
+    tipo === 'SALIDA_OCUPADO' ||
+    tipo === 'SALIDA' ||
+    conceptoLower.includes('salida') ||
+    conceptoLower.includes('despacho') ||
+    conceptoLower.includes('remito');
+  const esEntrada =
+    tipo === 'INGRESO' ||
+    tipo === 'ENTRADA' ||
+    conceptoLower.includes('ingreso') ||
+    conceptoLower.includes('retiro') ||
+    conceptoLower.includes('entrada') ||
+    conceptoLower.includes('devolución') ||
+    conceptoLower.includes('devolucion');
+
+  if (esSalida && !esEntrada) return { cargo: cantidadUnica, abono: 0 };
+  if (esEntrada && !esSalida) return { cargo: 0, abono: cantidadUnica };
+  if (esSalida && esEntrada) return { cargo: cantidadUnica, abono: 0 };
+  return { cargo: cantidadUnica, abono: 0 };
 }
 
 export async function generarResumenEnvasesPdf(data: ResumenEnvasesData): Promise<void> {
@@ -138,9 +187,8 @@ export async function generarResumenEnvasesPdf(data: ResumenEnvasesData): Promis
     const indicesCero: number[] = [];
 
     movimientosOrdenados.forEach((m, idx) => {
-      const entregados = leerEntregados(m);
-      const devueltos = leerDevueltos(m);
-      saldo += sign * (entregados - devueltos);
+      const { cargo, abono } = getCargoYAbono(m);
+      saldo += sign * (cargo - abono);
       const fila: RowConSaldo = { ...m, saldo_acumulado: saldo };
       filas.push(fila);
       if (saldo === 0) indicesCero.push(idx);
@@ -183,10 +231,9 @@ export async function generarResumenEnvasesPdf(data: ResumenEnvasesData): Promis
 
   const head = [['Fecha', 'Concepto', 'Envase', 'Entregados (Cargo)', 'Devueltos (Abono)', 'Saldo Acumulado']];
   const body = filasVisibles.map(m => {
-    const entregadosNum = leerEntregados(m);
-    const devueltosNum = leerDevueltos(m);
-    const entregados = entregadosNum !== 0 ? String(entregadosNum) : '-';
-    const devueltos = devueltosNum !== 0 ? String(devueltosNum) : '-';
+    const { cargo, abono } = getCargoYAbono(m);
+    const entregados = cargo !== 0 ? String(cargo) : '-';
+    const devueltos = abono !== 0 ? String(abono) : '-';
     const saldo = String(m.saldo_acumulado ?? 0);
     return [
       formatFecha(m.fecha),
