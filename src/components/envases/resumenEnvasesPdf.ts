@@ -116,22 +116,11 @@ function getCargoYAbono(row: HistorialEnvaseRow): { cargo: number; abono: number
 
   if (cargo !== 0 || abono !== 0) return { cargo, abono };
 
-  const cantidadUnica = leerNumeroCampo(row, 'cantidad', [
-    'cantidad_movimiento',
-    'cantidad_salida',
-    'cantidad_entrada',
-    'cantidad_ingreso',
-    'cantidad_egreso',
-  ]);
-  if (cantidadUnica === 0) return { cargo: 0, abono: 0 };
-
   const tipo = leerTipoMovimiento(row);
   const concepto = (typeof (row as unknown as Record<string, unknown>).concepto === 'string')
     ? (row as unknown as Record<string, unknown>).concepto as string
     : '';
-
   const conceptoLower = concepto.toLowerCase();
-
   const esSalida =
     tipo === 'SALIDA_OCUPADO' ||
     tipo === 'SALIDA' ||
@@ -147,10 +136,40 @@ function getCargoYAbono(row: HistorialEnvaseRow): { cargo: number; abono: number
     conceptoLower.includes('devolución') ||
     conceptoLower.includes('devolucion');
 
-  if (esSalida && !esEntrada) return { cargo: cantidadUnica, abono: 0 };
-  if (esEntrada && !esSalida) return { cargo: 0, abono: cantidadUnica };
-  if (esSalida && esEntrada) return { cargo: cantidadUnica, abono: 0 };
-  return { cargo: cantidadUnica, abono: 0 };
+  // Cantidad: primero el de salidas de fruta (Salidas_Fruta.cantidad_envases), luego Movimientos_Envases.cantidad
+  const cantidadUnica = leerNumeroCampo(row, 'cantidad_envases', [
+    'cantidad',
+    'cantidad_movimiento',
+    'cantidad_salida',
+    'cantidad_entrada',
+    'cantidad_ingreso',
+    'cantidad_egreso',
+  ]);
+  if (cantidadUnica !== 0) {
+    if (esSalida && !esEntrada) return { cargo: cantidadUnica, abono: 0 };
+    if (esEntrada && !esSalida) return { cargo: 0, abono: cantidadUnica };
+    if (esSalida && esEntrada) return { cargo: cantidadUnica, abono: 0 };
+    return { cargo: cantidadUnica, abono: 0 };
+  }
+
+  // Último recurso: cualquier clave numérica del row que parezca cantidad (p. ej. el RPC devuelve otro nombre)
+  const r = row as unknown as Record<string, unknown>;
+  for (const key of Object.keys(r)) {
+    const k = key.toLowerCase();
+    if (
+      (k.includes('cantidad') || k.includes('cargo') || k.includes('abono') || k.includes('entregado') || k.includes('devuelto') || k === 'cantidad') &&
+      typeof r[key] === 'number' &&
+      !Number.isNaN(r[key] as number) &&
+      (r[key] as number) > 0
+    ) {
+      const num = r[key] as number;
+      if (esSalida && !esEntrada) return { cargo: num, abono: 0 };
+      if (esEntrada && !esSalida) return { cargo: 0, abono: num };
+      if (esSalida && esEntrada) return { cargo: num, abono: 0 };
+      return { cargo: num, abono: 0 };
+    }
+  }
+  return { cargo: 0, abono: 0 };
 }
 
 export async function generarResumenEnvasesPdf(data: ResumenEnvasesData): Promise<void> {
