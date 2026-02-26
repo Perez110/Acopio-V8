@@ -148,6 +148,7 @@ function EntidadCard({ entidad }: { entidad: SaldoEntidad }) {
                 empresaLogoBase64: empresaLogoBase64 ?? undefined,
                 entidadNombre: entidad.entityNombre,
                 entidadTipo: entidad.entityType === 'proveedor' ? 'PROVEEDOR' : 'CLIENTE',
+                saldoActualEsperado: entidad.totalSaldo,
                 movimientos: data,
               });
             } finally {

@@ -6,6 +6,7 @@ export interface ResumenEnvasesData {
   empresaLogoBase64?: string | null;
   entidadNombre: string;
   entidadTipo: TipoEntidadEnvase;
+  saldoActualEsperado: number;
   movimientos: HistorialEnvaseRow[];
 }
 
@@ -82,8 +83,68 @@ export async function generarResumenEnvasesPdf(data: ResumenEnvasesData): Promis
 
   y += 12;
 
+  // Recalcular saldos acumulados y aplicar lógica de corte por último saldo 0
+  const movimientosOrdenados = [...data.movimientos].sort((a, b) =>
+    a.fecha.localeCompare(b.fecha),
+  );
+
+  type RowConSaldo = HistorialEnvaseRow & { saldo_acumulado: number };
+
+  function recalcularConSigno(sign: 1 | -1): {
+    filas: RowConSaldo[];
+    saldoFinal: number;
+    indicesCero: number[];
+  } {
+    let saldo = 0;
+    const filas: RowConSaldo[] = [];
+    const indicesCero: number[] = [];
+
+    movimientosOrdenados.forEach((m, idx) => {
+      const entregados = m.entregados ?? 0;
+      const devueltos = m.devueltos ?? 0;
+      saldo += sign * (entregados - devueltos);
+      const fila: RowConSaldo = { ...m, saldo_acumulado: saldo };
+      filas.push(fila);
+      if (saldo === 0) indicesCero.push(idx);
+    });
+
+    return { filas, saldoFinal: saldo, indicesCero };
+  }
+
+  const esperado = data.saldoActualEsperado ?? 0;
+  const variantePos = recalcularConSigno(1);
+  const varianteNeg = recalcularConSigno(-1);
+
+  const usarNeg =
+    Math.abs(varianteNeg.saldoFinal - esperado) < Math.abs(variantePos.saldoFinal - esperado);
+
+  const elegido = usarNeg ? varianteNeg : variantePos;
+  const filasConSaldo = elegido.filas;
+  const saldoFinal = elegido.saldoFinal;
+  const indicesCero = elegido.indicesCero;
+
+  let inicio = 0;
+  let fin = filasConSaldo.length;
+
+  if (indicesCero.length > 0) {
+    if (saldoFinal === 0) {
+      const ultimoCero = indicesCero[indicesCero.length - 1];
+      const penultimoCero = indicesCero.length >= 2 ? indicesCero[indicesCero.length - 2] : -1;
+      inicio = penultimoCero + 1;
+      fin = ultimoCero + 1;
+    } else {
+      const ultimoCero = indicesCero[indicesCero.length - 1];
+      inicio = ultimoCero + 1;
+    }
+  }
+
+  let filasVisibles = filasConSaldo.slice(inicio, fin);
+  if (filasVisibles.length === 0) {
+    filasVisibles = filasConSaldo;
+  }
+
   const head = [['Fecha', 'Concepto', 'Envase', 'Entregados (Cargo)', 'Devueltos (Abono)', 'Saldo Acumulado']];
-  const body = data.movimientos.map(m => {
+  const body = filasVisibles.map(m => {
     const entregados =
       m.entregados != null && m.entregados !== 0 ? String(m.entregados) : '-';
     const devueltos =
@@ -130,9 +191,7 @@ export async function generarResumenEnvasesPdf(data: ResumenEnvasesData): Promis
   });
 
   const last = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable;
-  const saldoActual = data.movimientos.length
-    ? data.movimientos[data.movimientos.length - 1].saldo_acumulado
-    : 0;
+  const saldoActual = esperado;
 
   const boxY = last.finalY + 6;
   const boxW = PAGE_W - MARGIN * 2;
