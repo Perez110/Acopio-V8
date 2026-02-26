@@ -66,6 +66,44 @@ function formatFecha(iso: string): string {
   }
 }
 
+function leerNumeroCampo(
+  row: HistorialEnvaseRow,
+  principal: string,
+  aliases: string[],
+): number {
+  const r = row as unknown as Record<string, unknown>;
+  for (const key of [principal, ...aliases]) {
+    if (!(key in r)) continue;
+    const v = r[key];
+    if (typeof v === 'number' && !Number.isNaN(v)) return v;
+    if (typeof v === 'string') {
+      const n = Number(v);
+      if (!Number.isNaN(n)) return n;
+    }
+  }
+  return 0;
+}
+
+function leerEntregados(row: HistorialEnvaseRow): number {
+  // Soporta distintos nombres que pueda devolver la vista/RPC
+  return leerNumeroCampo(row, 'entregados', [
+    'cargo',
+    'cantidad_cargo',
+    'cantidad_entregados',
+    'cantidad',
+    'ingreso',
+  ]);
+}
+
+function leerDevueltos(row: HistorialEnvaseRow): number {
+  return leerNumeroCampo(row, 'devueltos', [
+    'abono',
+    'cantidad_abono',
+    'cantidad_devueltos',
+    'egreso',
+  ]);
+}
+
 export async function generarResumenEnvasesPdf(data: ResumenEnvasesData): Promise<void> {
   const { default: jsPDF } = await import('jspdf');
   const { default: autoTable } = await import('jspdf-autotable');
@@ -100,8 +138,8 @@ export async function generarResumenEnvasesPdf(data: ResumenEnvasesData): Promis
     const indicesCero: number[] = [];
 
     movimientosOrdenados.forEach((m, idx) => {
-      const entregados = m.entregados ?? 0;
-      const devueltos = m.devueltos ?? 0;
+      const entregados = leerEntregados(m);
+      const devueltos = leerDevueltos(m);
       saldo += sign * (entregados - devueltos);
       const fila: RowConSaldo = { ...m, saldo_acumulado: saldo };
       filas.push(fila);
@@ -145,10 +183,10 @@ export async function generarResumenEnvasesPdf(data: ResumenEnvasesData): Promis
 
   const head = [['Fecha', 'Concepto', 'Envase', 'Entregados (Cargo)', 'Devueltos (Abono)', 'Saldo Acumulado']];
   const body = filasVisibles.map(m => {
-    const entregados =
-      m.entregados != null && m.entregados !== 0 ? String(m.entregados) : '-';
-    const devueltos =
-      m.devueltos != null && m.devueltos !== 0 ? String(m.devueltos) : '-';
+    const entregadosNum = leerEntregados(m);
+    const devueltosNum = leerDevueltos(m);
+    const entregados = entregadosNum !== 0 ? String(entregadosNum) : '-';
+    const devueltos = devueltosNum !== 0 ? String(devueltosNum) : '-';
     const saldo = String(m.saldo_acumulado ?? 0);
     return [
       formatFecha(m.fecha),
