@@ -178,3 +178,30 @@ export async function deleteAjusteEnvase(id: number): Promise<{ error?: string }
   revalidatePath('/inventario');
   return {};
 }
+
+// ── getStockProducto ─────────────────────────────────────────────────────────
+/**
+ * Devuelve el stock actual (kg) de un producto: Σ(Entradas_Fruta.peso_neto_kg) − Σ(Salidas_Fruta.peso_salida_acopio_kg).
+ * Usado desde el formulario de Salida de Fruta para mostrar "Stock disponible" y el botón [Usar Total].
+ */
+export async function getStockProducto(productoId: number): Promise<{ stock: number }> {
+  const [
+    { data: entradas },
+    { data: salidas },
+  ] = await Promise.all([
+    supabaseServer
+      .from('Entradas_Fruta')
+      .select('peso_neto_kg')
+      .eq('producto_id', productoId),
+    supabaseServer
+      .from('Salidas_Fruta')
+      .select('peso_salida_acopio_kg')
+      .eq('producto_id', productoId),
+  ]);
+
+  let total = 0;
+  for (const e of entradas ?? []) total += Number(e.peso_neto_kg ?? 0);
+  for (const s of salidas ?? []) total -= Number(s.peso_salida_acopio_kg ?? 0);
+
+  return { stock: parseFloat(Math.max(0, total).toFixed(2)) };
+}

@@ -7,6 +7,7 @@ import Combobox, { type ComboOption } from '@/components/ui/Combobox';
 import Modal from '@/components/ui/Modal';
 import { ClienteQuickForm, FleteroQuickForm, ProductoQuickForm } from '@/components/maestros/QuickForms';
 import { registrarSalidaFrutaConEnvases } from '@/app/movimiento/actions';
+import { getStockProducto } from '@/app/inventario/actions';
 import type { Cliente, Fletero, Producto, Envase } from '@/types/database';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
@@ -55,6 +56,8 @@ export default function SalidaFruta() {
   const [productoId, setProductoId] = useState('');
   const [pesoSalida, setPesoSalida] = useState<number | ''>('');
   const [remitoNro, setRemitoNro] = useState('');
+  const [stockDisponible, setStockDisponible] = useState<number | null>(null);
+  const [stockLoading, setStockLoading] = useState(false);
 
   // Lista acumulada
   const [listaSalidas, setListaSalidas] = useState<SalidaItem[]>([]);
@@ -79,6 +82,24 @@ export default function SalidaFruta() {
       setLoading(false);
     });
   }, []);
+
+  // ── Stock del producto seleccionado (para UX: mostrar disponible y [Usar Total]) ─
+  useEffect(() => {
+    if (!productoId) {
+      setStockDisponible(null);
+      return;
+    }
+    let cancelled = false;
+    setStockLoading(true);
+    setStockDisponible(null);
+    getStockProducto(Number(productoId)).then(({ stock }) => {
+      if (!cancelled) {
+        setStockDisponible(stock);
+        setStockLoading(false);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [productoId]);
 
   // ── Acciones ───────────────────────────────────────────────────────────────
   function handleAgregar() {
@@ -324,6 +345,26 @@ export default function SalidaFruta() {
               placeholder="0,00"
               className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
             />
+            {productoId && (
+              <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                {stockLoading ? (
+                  <span className="text-xs text-gray-400">Cargando stock…</span>
+                ) : stockDisponible !== null ? (
+                  <>
+                    <span className="text-xs font-medium text-green-600">
+                      Stock disponible: {stockDisponible.toFixed(2)} kg
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setPesoSalida(stockDisponible)}
+                      className="text-xs font-semibold text-blue-600 underline decoration-blue-400 underline-offset-1 hover:text-blue-700"
+                    >
+                      [Usar Total]
+                    </button>
+                  </>
+                ) : null}
+              </div>
+            )}
           </div>
           <div>
             <label className="mb-1.5 block text-xs font-medium text-gray-500">
