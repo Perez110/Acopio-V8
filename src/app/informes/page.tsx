@@ -40,9 +40,9 @@ export default async function InformesPage() {
         </p>
         <Link
           href="/informes/movimientos-internos"
-          className="mt-3 inline-flex items-center gap-2 rounded-lg border border-purple-200 bg-purple-50 px-3 py-2 text-sm font-medium text-purple-700 transition-colors hover:bg-purple-100"
+          className="mt-3 inline-flex items-center justify-center gap-2 rounded-lg bg-slate-800 px-6 py-3 text-sm font-semibold text-white shadow-md transition-colors hover:bg-slate-700"
         >
-          <ArrowRightLeft className="h-4 w-4" />
+          <ArrowRightLeft className="h-4 w-4 text-white" />
           Reporte de Movimientos Internos (transferencias entre cajas/bancos)
         </Link>
       </div>
