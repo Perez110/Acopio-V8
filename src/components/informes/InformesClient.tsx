@@ -130,12 +130,12 @@ async function exportPDF(
 
   doc.setDrawColor(55, 65, 81);
   doc.setLineWidth(0.55);
-  doc.line(margin, 18, pageW - margin, 18);
+  doc.line(margin, 22, pageW - margin, 22);
 
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(100, 116, 139);
-  doc.text(`Estado de Cuenta — ${entidadLabel}`, margin, 22);
+  doc.text(`Estado de Cuenta — ${entidadLabel}`, margin, 28);
 
   // ── Fecha, período y usuario a la derecha, en columna, mismo margen derecho ───
   const fechaEmision = new Date().toLocaleDateString('es-AR', {
@@ -144,7 +144,7 @@ async function exportPDF(
   doc.setTextColor(80, 80, 80);
   doc.text(`Fecha de emisión: ${fechaEmision}`, pageW - margin, 12, { align: 'right' });
   doc.text(`Período: ${start} al ${end}`, pageW - margin, 17, { align: 'right' });
-  doc.text(`Usuario: ${PDF_USUARIO_LABEL}`, pageW - margin, 22, { align: 'right' });
+  doc.text(`Usuario: ${PDF_USUARIO_LABEL}`, pageW - margin, 20, { align: 'right' });
 
   // ── Totales para resumen y pie de tabla ──────────────────────────────────────
   const totSaldoAnt = rows.reduce((s, r) => s + r.saldoAnterior, 0);
@@ -157,7 +157,7 @@ async function exportPDF(
     n === 0 ? 'Saldado' : n > 0 ? pdfMoney(n) : `-${pdfMoney(Math.abs(n))} a favor`;
 
   // ── Resumen Ejecutivo: 5 tarjetas (igual que la UI web) ──────────────────────
-  const resumenY = 28;
+  const resumenY = 34;
   doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(26, 26, 26);
@@ -290,11 +290,11 @@ async function exportPDF(
 
     columnStyles: {
       0: { cellWidth: (pageW - 2 * margin) * 0.22, fontStyle: 'bold', halign: 'left' },
-      1: { cellWidth: (pageW - 2 * margin) * 0.14, halign: 'right' },
-      2: { cellWidth: (pageW - 2 * margin) * 0.16, halign: 'right' },
-      3: { cellWidth: (pageW - 2 * margin) * 0.14, halign: 'right' },
-      4: { cellWidth: (pageW - 2 * margin) * 0.12, halign: 'right' },
-      5: { cellWidth: (pageW - 2 * margin) * 0.22, fontStyle: 'bold', halign: 'right' },
+      1: { cellWidth: (pageW - 2 * margin) * 0.14, halign: 'center' },
+      2: { cellWidth: (pageW - 2 * margin) * 0.16, halign: 'center' },
+      3: { cellWidth: (pageW - 2 * margin) * 0.14, halign: 'center' },
+      4: { cellWidth: (pageW - 2 * margin) * 0.12, halign: 'center' },
+      5: { cellWidth: (pageW - 2 * margin) * 0.22, fontStyle: 'bold', halign: 'center' },
     },
 
     didParseCell: (data) => {
@@ -336,10 +336,11 @@ async function exportPDF(
     showFoot: 'lastPage',
   });
 
-  // ── Leyenda al pie de la tabla (solo en primera página si hay datos) ───────────
+  // ── Leyenda: 4 ítems en cuartos iguales del ancho útil, cuadro y texto centrados ─
   const tableFinalY = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY;
   if (rows.length > 0 && tableFinalY != null && tableFinalY < pageH - 28) {
     doc.setPage(1);
+    const anchoUtil = pageW - 2 * margin;
     const leyendaY = tableFinalY + 8;
     doc.setFontSize(7);
     doc.setFont('helvetica', 'normal');
@@ -349,22 +350,20 @@ async function exportPDF(
       { color: [251, 146, 60] as [number, number, number], text: 'Deuda mayor a $5.000' },
       { color: [34, 197, 94] as [number, number, number], text: 'Saldado en el período' },
     ];
-    const anchoLeyenda = (pageW - 2 * margin) / leyendas.length;
     leyendas.forEach((l, idx) => {
-      const leyendaX = margin + idx * anchoLeyenda;
+      const leyendaX = margin + anchoUtil * (idx * 0.25);
       doc.setFillColor(...l.color);
-      doc.rect(leyendaX, leyendaY - 1.2, 2, 2, 'F');
+      doc.rect(leyendaX + 1, leyendaY - 1, 2, 2, 'F');
       doc.setTextColor(80, 80, 80);
-      doc.text(l.text, leyendaX + 3, leyendaY);
+      doc.text(l.text, leyendaX + 4, leyendaY);
     });
   }
 
   // ── Footer: izquierda (barcode) | centro (página + documento) | derecha (usuario) ─
   const totalPags = (doc.internal as unknown as { getNumberOfPages: () => number }).getNumberOfPages();
-  const footerMarginBottom = 18;
-  const footerY = pageH - footerMarginBottom;
+  const footerY = pageH - 10;
   const barcodeH = 5;
-  const barcodeY = pageH - footerMarginBottom - 4;
+  const barcodeY = footerY - 3;
 
   for (let i = 1; i <= totalPags; i++) {
     doc.setPage(i);
