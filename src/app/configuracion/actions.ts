@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { supabaseServer } from '@/lib/supabase-server';
+import { supabaseService } from '@/lib/supabase-service';
 
 export interface ConfiguracionEmpresa {
   id: number;
@@ -22,6 +23,31 @@ export async function getConfiguracion(): Promise<ConfiguracionEmpresa | null> {
   }
 
   return data as ConfiguracionEmpresa;
+}
+
+/**
+ * Obtiene solo nombre y logo para la pantalla de login (white label).
+ * Usa service_role si está disponible para evitar fallos por RLS con usuario no autenticado.
+ * Si falla, devuelve null (el caller debe usar fallback).
+ */
+export async function getConfiguracionParaLogin(): Promise<{
+  nombre_empresa: string | null;
+  logo_url: string | null;
+} | null> {
+  const client = supabaseService ?? supabaseServer;
+  const { data, error } = await client
+    .from('Configuracion_Empresa')
+    .select('nombre_empresa, logo_url')
+    .eq('id', 1)
+    .single();
+
+  if (error) {
+    return null;
+  }
+  return {
+    nombre_empresa: (data?.nombre_empresa ?? null) as string | null,
+    logo_url: (data?.logo_url ?? null) as string | null,
+  };
 }
 
 export async function updateConfiguracion(formData: FormData): Promise<{ ok: boolean; error?: string }> {
