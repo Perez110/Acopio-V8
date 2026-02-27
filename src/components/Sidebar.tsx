@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+import { createClient } from '@/lib/supabase-browser';
 import {
   Leaf,
   BarChart2,
@@ -80,6 +81,14 @@ interface Props {
 
 export default function Sidebar({ collapsed, onToggle }: Props) {
   const pathname = usePathname();
+  const router = useRouter();
+
+  async function handleLogout() {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push('/login');
+    router.refresh();
+  }
 
   function isActive(href: string) {
     return href === '/' ? pathname === '/' : pathname.startsWith(href);
@@ -190,6 +199,8 @@ export default function Sidebar({ collapsed, onToggle }: Props) {
       >
         {collapsed ? (
           <button
+            type="button"
+            onClick={handleLogout}
             title="Cerrar Sesión"
             className="rounded-lg p-2 text-red-400 transition-colors hover:bg-red-50 hover:text-red-500"
           >
@@ -199,6 +210,8 @@ export default function Sidebar({ collapsed, onToggle }: Props) {
           <div className="flex items-center justify-between">
             <p className="text-xs text-slate-400">Sistema Acopio v1.0</p>
             <button
+              type="button"
+              onClick={handleLogout}
               title="Cerrar Sesión"
               className="rounded-lg p-1.5 text-red-400 transition-colors hover:bg-red-50 hover:text-red-500"
             >

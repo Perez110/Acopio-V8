@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
-import ClientShell from '@/components/ClientShell';
+import AuthLayoutWrapper from '@/components/AuthLayoutWrapper';
 import { getConfiguracion } from '@/app/configuracion/actions';
 
 const geistSans = Geist({
@@ -29,7 +29,7 @@ export default async function RootLayout({
   return (
     <html lang="es">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <ClientShell configEmpresa={config}>{children}</ClientShell>
+        <AuthLayoutWrapper configEmpresa={config}>{children}</AuthLayoutWrapper>
       </body>
     </html>
   );
