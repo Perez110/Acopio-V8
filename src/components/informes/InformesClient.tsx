@@ -101,22 +101,23 @@ async function exportPDF(
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
-  const margin = 14;
+  // Márgenes simétricos mínimo ~40pt (≈14mm), usar 15mm para uniformidad
+  const margin = 15;
   const entidadLabel = tab === 'proveedores' ? 'Proveedores' : 'Clientes';
   const entidadSingular = tab === 'proveedores' ? 'proveedor' : 'cliente';
   const entidadPlural = tab === 'proveedores' ? 'proveedores' : 'clientes';
   const totalesLabel = rows.length === 1 ? entidadSingular : entidadPlural;
 
   const tituloMarca = `${nombreSistema} — Sistema de Gestión`;
-  const logoW = 22;
-  const logoH = 10;
-  const headerTextY = 14;
+  const logoW = 20;
+  const logoH = 8;
+  const headerCenterY = 13;  // Eje Y común para logo y título (alineación vertical al centro)
 
-  // ── Header de marca: logo (si existe) + nombre dinámico desde configuración ───
+  // ── Header: logo + título alineados verticalmente al centro ─────────────────
   if (logoBase64) {
     const format = logoBase64.startsWith('data:image/png') ? 'PNG' : 'JPEG';
     try {
-      doc.addImage(logoBase64, format, margin, 8, logoW, logoH);
+      doc.addImage(logoBase64, format, margin, headerCenterY - logoH / 2, logoW, logoH);
     } catch {
       // Si falla addImage, se muestra solo el texto
     }
@@ -125,10 +126,10 @@ async function exportPDF(
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(26, 26, 26);
   const textX = logoBase64 ? margin + logoW + 4 : margin;
-  doc.text(tituloMarca, textX, headerTextY);
+  doc.text(tituloMarca, textX, headerCenterY + 1.5);
 
-  doc.setDrawColor(55, 65, 81);   // #374151 gris oscuro
-  doc.setLineWidth(0.55);        // ~2px
+  doc.setDrawColor(55, 65, 81);
+  doc.setLineWidth(0.55);
   doc.line(margin, 18, pageW - margin, 18);
 
   doc.setFontSize(9);
@@ -136,14 +137,14 @@ async function exportPDF(
   doc.setTextColor(100, 116, 139);
   doc.text(`Estado de Cuenta — ${entidadLabel}`, margin, 22);
 
-  // ── Fecha, período y usuario a la derecha ───────────────────────────────────
+  // ── Fecha, período y usuario a la derecha, en columna, mismo margen derecho ───
   const fechaEmision = new Date().toLocaleDateString('es-AR', {
     day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
   });
   doc.setTextColor(80, 80, 80);
-  doc.text(`Fecha de emisión: ${fechaEmision}`, pageW - margin, 14, { align: 'right' });
-  doc.text(`Período: ${start}  al  ${end}`, pageW - margin, 19, { align: 'right' });
-  doc.text(`Usuario: ${PDF_USUARIO_LABEL}`, pageW - margin, 24, { align: 'right' });
+  doc.text(`Fecha de emisión: ${fechaEmision}`, pageW - margin, 12, { align: 'right' });
+  doc.text(`Período: ${start} al ${end}`, pageW - margin, 17, { align: 'right' });
+  doc.text(`Usuario: ${PDF_USUARIO_LABEL}`, pageW - margin, 22, { align: 'right' });
 
   // ── Totales para resumen y pie de tabla ──────────────────────────────────────
   const totSaldoAnt = rows.reduce((s, r) => s + r.saldoAnterior, 0);
@@ -155,52 +156,68 @@ async function exportPDF(
   const fmtSaldo = (n: number) =>
     n === 0 ? 'Saldado' : n > 0 ? pdfMoney(n) : `-${pdfMoney(Math.abs(n))} a favor`;
 
-  // ── Bloque Resumen Ejecutivo (KPIs antes de la tabla) ────────────────────────
+  // ── Resumen Ejecutivo: 5 tarjetas (igual que la UI web) ──────────────────────
   const resumenY = 28;
   doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(26, 26, 26);
   doc.text('Resumen Ejecutivo', margin, resumenY);
 
-  const kpiW = (pageW - 2 * margin - 3 * 4) / 4;  // 4 cajas con 4mm de separación
+  const gap = 3;
+  const numKpis = 5;
+  const kpiW = (pageW - 2 * margin - (numKpis - 1) * gap) / numKpis;
   const kpiY = resumenY + 2;
-  const kpiH = 14;
-  const labels = [
-    'Kilos Totales',
+  const kpiH = 18;
+  const kpiLabels = [
+    'Saldo Arrastrado',
+    'Kilos del Período',
     'Valor Generado',
-    tab === 'proveedores' ? 'Total Pagado' : 'Total Cobrado',
+    'Dinero Movido',
     'Saldo Final Neto',
   ];
-  const values = [
+  const kpiSubs = [
+    totSaldoAnt >= 0 ? 'Deuda anterior' : 'Crédito anterior',
+    'Movimiento físico',
+    'Compras / ventas',
+    tab === 'proveedores' ? 'Pagado' : 'Cobrado',
+    totSaldo > 0 ? `${rows.filter(r => r.saldoFinal > 0).length} con deuda activa` : 'Saldado',
+  ];
+  const kpiValues = [
+    totSaldoAnt === 0 ? '—' : fmtSaldo(totSaldoAnt),
     `${totKilos.toFixed(2)} kg`,
     pdfMoney(totValor),
     pdfMoney(totMovido),
     fmtSaldo(totSaldo),
   ];
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
+  doc.setFontSize(7);
   doc.setTextColor(100, 116, 139);
-  for (let i = 0; i < 4; i++) {
-    const x = margin + i * (kpiW + 4);
+  for (let i = 0; i < numKpis; i++) {
+    const x = margin + i * (kpiW + gap);
     doc.setDrawColor(220, 220, 220);
     doc.rect(x, kpiY, kpiW, kpiH, 'S');
-    doc.text(labels[i], x + 3, kpiY + 5);
-    if (i === 3) {
-      doc.setFontSize(12);
+    doc.text(kpiLabels[i], x + 3, kpiY + 5);
+    const isSaldoFinal = i === 4;
+    if (isSaldoFinal && totSaldo > 0) {
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(180, 82, 82);
+    } else {
+      doc.setFontSize(10);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(26, 26, 26);
     }
-    doc.text(values[i], x + 3, kpiY + 10);
-    doc.setFontSize(8);
+    doc.text(kpiValues[i], x + 3, kpiY + 10);
+    doc.setFontSize(7);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(100, 116, 139);
+    doc.text(kpiSubs[i], x + 3, kpiY + 15);
   }
   doc.setTextColor(51, 65, 85);
 
   const startY = kpiY + kpiH + 6;
 
-  // ── Tabla de detalle: Pagos/Cobros según entidad, zebra #f8f9fa, números a la derecha ─
-  const colPagosCobros = tab === 'proveedores' ? 'Pagos' : 'Cobros';
+  // ── Tabla: 6 columnas como en la web (Proveedor | Saldo Anterior | Kilos | Valor | Dinero Movido | Saldo Final) ─
   autoTable(doc, {
     startY,
     head: [[
@@ -208,7 +225,7 @@ async function exportPDF(
       'Saldo Anterior',
       'Kilos del Período',
       'Valor Generado',
-      colPagosCobros,
+      'Dinero Movido',
       'Saldo Final',
     ]],
     body: rows.map(r => {
@@ -263,7 +280,7 @@ async function exportPDF(
     },
 
     footStyles: {
-      fillColor: [255, 255, 255],
+      fillColor: [248, 249, 250],
       textColor: [26, 26, 26],
       fontStyle: 'bold',
       fontSize: 10,
@@ -272,12 +289,12 @@ async function exportPDF(
     },
 
     columnStyles: {
-      0: { cellWidth: 55, fontStyle: 'bold', halign: 'left' },
-      1: { cellWidth: 35, halign: 'right' },
-      2: { cellWidth: 38, halign: 'right' },
-      3: { cellWidth: 38, halign: 'right' },
-      4: { cellWidth: 38, halign: 'right' },
-      5: { cellWidth: 40, fontStyle: 'bold', halign: 'right' },
+      0: { cellWidth: (pageW - 2 * margin) * 0.22, fontStyle: 'bold', halign: 'left' },
+      1: { cellWidth: (pageW - 2 * margin) * 0.14, halign: 'right' },
+      2: { cellWidth: (pageW - 2 * margin) * 0.14, halign: 'right' },
+      3: { cellWidth: (pageW - 2 * margin) * 0.14, halign: 'right' },
+      4: { cellWidth: (pageW - 2 * margin) * 0.14, halign: 'right' },
+      5: { cellWidth: (pageW - 2 * margin) * 0.22, fontStyle: 'bold', halign: 'right' },
     },
 
     didParseCell: (data) => {
@@ -297,6 +314,10 @@ async function exportPDF(
           data.cell.styles.textColor = [180, 82, 82];
         }
       }
+      if (data.section === 'foot' && data.column.index === 5) {
+        if (totSaldo > 0) data.cell.styles.textColor = [180, 82, 82];
+        else if (totSaldo < 0) data.cell.styles.textColor = [6, 95, 70];
+      }
     },
 
     didDrawCell: (data) => {
@@ -315,27 +336,53 @@ async function exportPDF(
     showFoot: 'lastPage',
   });
 
-  // ── Footer: página, usuario, documento validado (barcode decorativo) ──────────
+  // ── Leyenda al pie de la tabla (solo en primera página si hay datos) ───────────
+  const tableFinalY = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY;
+  if (rows.length > 0 && tableFinalY != null && tableFinalY < pageH - 28) {
+    doc.setPage(1);
+    const leyendaY = tableFinalY + 8;
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'normal');
+    const leyendas = [
+      { color: [248, 113, 113] as [number, number, number], text: 'Saldo en rojo = deuda pendiente' },
+      { color: [52, 211, 153] as [number, number, number], text: 'Saldo en verde = saldo a favor' },
+      { color: [251, 146, 60] as [number, number, number], text: 'Deuda mayor a $5.000' },
+      { color: [34, 197, 94] as [number, number, number], text: 'Saldado en el período' },
+    ];
+    const anchoLeyenda = (pageW - 2 * margin) / leyendas.length;
+    leyendas.forEach((l, idx) => {
+      const leyendaX = margin + idx * anchoLeyenda;
+      doc.setFillColor(...l.color);
+      doc.rect(leyendaX, leyendaY - 1.2, 2, 2, 'F');
+      doc.setTextColor(80, 80, 80);
+      doc.text(l.text, leyendaX + 3, leyendaY);
+    });
+  }
+
+  // ── Footer: izquierda (barcode) | centro (página + documento) | derecha (usuario), alineados al centro ─
   const totalPags = (doc.internal as unknown as { getNumberOfPages: () => number }).getNumberOfPages();
+  const footerY = pageH - 12;
   const barcodeH = 5;
-  const barcodeX = margin;
-  const barcodeY = pageH - 18;
+  const barcodeY = footerY - 2;
 
   for (let i = 1; i <= totalPags; i++) {
     doc.setPage(i);
     doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(120, 120, 120);
-    doc.text(`Página ${i} de ${totalPags}`, pageW / 2, pageH - 10, { align: 'center' });
-    doc.text(`Usuario: ${PDF_USUARIO_LABEL}`, pageW - margin, pageH - 10, { align: 'right' });
+
+    doc.text(`Página ${i} de ${totalPags}`, pageW / 2, footerY, { align: 'center' });
     doc.setFontSize(7);
     doc.setTextColor(140, 140, 140);
-    doc.text(`${nombreSistema} — Documento generado automáticamente`, pageW / 2, pageH - 6, { align: 'center' });
+    doc.text(`${nombreSistema} — Documento generado automáticamente`, pageW / 2, footerY + 4, { align: 'center' });
 
-    // Código de barras decorativo (documento validado)
+    doc.setFontSize(8);
+    doc.setTextColor(120, 120, 120);
+    doc.text(`Usuario: ${PDF_USUARIO_LABEL}`, pageW - margin, footerY, { align: 'right' });
+
     doc.setFillColor(40, 40, 40);
     const seed = (i * 31 + start.length + end.length) % 97;
-    let x = barcodeX;
+    let x = margin;
     for (let b = 0; b < 18; b++) {
       const w = (seed + b * 7) % 3 === 0 ? 0.8 : 1.2;
       doc.rect(x, barcodeY, w, barcodeH, 'F');
