@@ -633,7 +633,8 @@ export default function FormCobrosPagos({
                   value={monto}
                   onChange={e => setMonto(e.target.value)}
                   placeholder="0,00"
-                  className={`input-base font-mono ${ringClass}`}
+                  readOnly={operacion === 'pago' && metodoPago === 'cheque'}
+                  className={`input-base font-mono ${ringClass} ${operacion === 'pago' && metodoPago === 'cheque' ? 'cursor-not-allowed bg-gray-50' : ''}`}
                 />
               </Field>
               <Field label="Método de pago">
@@ -750,9 +751,10 @@ export default function FormCobrosPagos({
                 <select
                   value={chequeIdSelected}
                   onChange={e => {
-                    setChequeIdSelected(e.target.value);
-                    const opt = chequesEnCarteraList.find(c => c.id === Number(e.target.value));
-                    if (opt?.monto != null) setMonto(String(opt.monto));
+                    const val = e.target.value;
+                    setChequeIdSelected(val);
+                    const opt = val ? chequesEnCarteraList.find(c => c.id === Number(val)) : null;
+                    setMonto(opt?.monto != null ? String(opt.monto) : '');
                   }}
                   className={`input-base ${ringClass}`}
                 >

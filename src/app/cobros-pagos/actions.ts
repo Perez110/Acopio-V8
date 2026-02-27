@@ -105,6 +105,7 @@ export async function deleteMovimientoFinanciero(
     revalidatePath('/cobros-pagos');
     revalidatePath('/cuentas-corrientes', 'layout');
     revalidatePath('/cajas-bancos');
+    revalidatePath('/fleteros', 'layout');
 
     return {};
   } catch (err) {
@@ -278,6 +279,24 @@ export async function registerPagoConCheque(params: {
   chequeId: number;
 }): Promise<{ error?: string }> {
   try {
+    const { data: cheque, error: errCheque } = await supabaseServer
+      .from('Cheques_Terceros')
+      .select('monto')
+      .eq('id', params.chequeId)
+      .eq('estado', 'EN_CARTERA')
+      .single();
+
+    if (errCheque || !cheque || cheque.monto == null) {
+      console.error('[registerPagoConCheque] cheque no encontrado o no en cartera:', errCheque);
+      return { error: 'El cheque seleccionado no está disponible.' };
+    }
+
+    const montoCheque = Number(cheque.monto);
+    if (Math.abs(montoCheque - params.monto) > 0.005) {
+      const fmt = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(montoCheque);
+      return { error: `El monto del pago debe coincidir exactamente con el valor del cheque seleccionado (${fmt}).` };
+    }
+
     if (params.cuentaId != null) {
       const { saldo, error: errSaldo } = await getSaldoActualCuenta(params.cuentaId);
       if (errSaldo) return { error: errSaldo };
