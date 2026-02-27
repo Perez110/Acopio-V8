@@ -558,7 +558,7 @@ export default function CajasBancosClient({
         onClose={() => { if (!historialLoading) setHistorialModalOpen(false); }}
         title="Conciliación bancaria"
         subtitle={historialCuentaId != null ? `Historial: ${historialCuentaNombre}` : undefined}
-        size="lg"
+        size="xl"
       >
         <div className="space-y-4 px-6 py-5">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -598,7 +598,7 @@ export default function CajasBancosClient({
             </button>
           </div>
           {historialItems.length > 0 && (
-            <div className="overflow-x-auto rounded-xl border border-slate-100">
+            <div className="min-w-0 overflow-x-auto rounded-xl border border-slate-100">
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wider text-slate-500">
                   <tr>
@@ -611,8 +611,8 @@ export default function CajasBancosClient({
                 <tbody className="divide-y divide-slate-50">
                   {historialItems.map((it, idx) => (
                     <tr key={idx} className="hover:bg-slate-50/70">
-                      <td className="px-4 py-2.5 text-slate-700">{it.fecha}</td>
-                      <td className="px-4 py-2.5 text-slate-900">{it.concepto}</td>
+                      <td className="whitespace-nowrap px-4 py-2.5 text-slate-700">{it.fecha}</td>
+                      <td className="min-w-[12rem] break-words px-4 py-2.5 text-slate-900">{it.concepto}</td>
                       <td className="px-4 py-2.5 text-center">
                         <span className={it.tipo === 'INGRESO' ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
                           {it.tipo}

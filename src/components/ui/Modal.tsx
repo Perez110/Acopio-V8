@@ -9,7 +9,7 @@ interface Props {
   title: string;
   subtitle?: string;
   children: React.ReactNode;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'sm' | 'md' | 'lg' | 'xl';
 }
 
 export default function Modal({
@@ -32,7 +32,7 @@ export default function Modal({
 
   if (!open) return null;
 
-  const maxW = { sm: 'max-w-sm', md: 'max-w-lg', lg: 'max-w-2xl' }[size];
+  const maxW = { sm: 'max-w-sm', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'w-full max-w-5xl sm:max-w-[80vw]' }[size];
 
   return (
     <div
