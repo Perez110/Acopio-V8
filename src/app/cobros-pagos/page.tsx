@@ -7,7 +7,18 @@ import { getHistorialMovimientos, getChequesEnCartera } from '@/app/cobros-pagos
 // 5 min de caché para el catálogo de entidades (rara vez cambia).
 export const revalidate = 300;
 
+/** Rango por defecto: primer día del mes actual y hoy (evita cargar todo el historial). */
+function getDefaultRangoMes() {
+  const n = new Date();
+  const y = n.getFullYear();
+  const m = String(n.getMonth() + 1).padStart(2, '0');
+  const d = String(n.getDate()).padStart(2, '0');
+  return { desde: `${y}-${m}-01`, hasta: `${y}-${m}-${d}` };
+}
+
 export default async function CobrosPagosPage() {
+  const { desde: defaultDesde, hasta: defaultHasta } = getDefaultRangoMes();
+
   const [
     { data: clientes },
     { data: proveedores },
@@ -20,7 +31,7 @@ export default async function CobrosPagosPage() {
     supabaseServer.from('Proveedores').select('id, nombre').eq('activo', true).order('nombre'),
     supabaseServer.from('Fleteros').select('id, nombre').eq('activo', true).order('nombre'),
     supabaseServer.from('Cuentas_Financieras').select('id, nombre, tipo').eq('activo', true).order('nombre'),
-    getHistorialMovimientos(1, 50),
+    getHistorialMovimientos(1, 50, defaultDesde, defaultHasta),
     getChequesEnCartera(),
   ]);
 

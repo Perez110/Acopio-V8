@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Package,
@@ -12,7 +12,7 @@ import {
   AlertCircle,
   X,
 } from 'lucide-react';
-import { ajustarStockEnvase, deleteAjusteEnvase, type TipoAjuste } from '@/app/inventario/actions';
+import { ajustarStockEnvase, deleteAjusteEnvase, getHistorialAjustes, type TipoAjuste } from '@/app/inventario/actions';
 
 // ── Tipos exportados ──────────────────────────────────────────────────────────
 export interface EnvaseConStock {
@@ -83,10 +83,22 @@ export default function InventarioEnvases({
   const [notasAjuste, setNotasAjuste] = useState('');
   const [saving, setSaving] = useState(false);
 
-  // Modal historial
+  // Modal historial (filtrado por rango de fechas, máx. 31 días)
   const [historialOpen, setHistorialOpen] = useState(false);
-  const [historial, setHistorial] = useState<AjusteHistorial[]>(historialInicial);
+  const [historial, setHistorial] = useState<AjusteHistorial[]>([]);
+  const [historialDesde, setHistorialDesde] = useState('');
+  const [historialHasta, setHistorialHasta] = useState('');
+  const [historialLoading, setHistorialLoading] = useState(false);
+  const [historialError, setHistorialError] = useState('');
   const [deletingId, setDeletingId] = useState<number | null>(null);
+
+  function getDefaultRangoMes(): { desde: string; hasta: string } {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    return { desde: `${y}-${m}-01`, hasta: `${y}-${m}-${d}` };
+  }
 
   // Toast
   const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
@@ -172,6 +184,47 @@ export default function InventarioEnvases({
     router.refresh(); // recalcula el stock en el Server Component
   }
 
+  // ── Abrir modal historial (inicializar fechas por defecto: mes actual) ─────
+  function openHistorialModal() {
+    const { desde, hasta } = getDefaultRangoMes();
+    setHistorialDesde(desde);
+    setHistorialHasta(hasta);
+    setHistorialError('');
+    setHistorialOpen(true);
+  }
+
+  // ── Buscar historial de ajustes (validación 31 días + fetch) ───────────────
+  async function fetchHistorial() {
+    const desde = historialDesde || getDefaultRangoMes().desde;
+    const hasta = historialHasta || getDefaultRangoMes().hasta;
+    const dDesde = new Date(desde);
+    const dHasta = new Date(hasta);
+    const diffMs = dHasta.getTime() - dDesde.getTime();
+    const diffDias = Math.ceil(diffMs / (1000 * 60 * 60 * 24)) + 1;
+    if (diffDias > 31) {
+      setHistorialError('Para optimizar el sistema, el rango máximo de consulta es de 31 días.');
+      showToast('error', 'Para optimizar el sistema, el rango máximo de consulta es de 31 días.');
+      return;
+    }
+    setHistorialLoading(true);
+    setHistorialError('');
+    const { data, error } = await getHistorialAjustes(desde, hasta);
+    setHistorialLoading(false);
+    if (error) {
+      setHistorialError(error);
+      showToast('error', error);
+      return;
+    }
+    setHistorial(data ?? []);
+  }
+
+  // Carga inicial al abrir el modal (rango por defecto = mes actual)
+  useEffect(() => {
+    if (historialOpen && historialDesde && historialHasta) {
+      fetchHistorial();
+    }
+  }, [historialOpen]); // eslint-disable-line react-hooks/exhaustive-deps -- solo al abrir
+
   // ── Eliminar ajuste ───────────────────────────────────────────────────────
   async function handleDeleteAjuste(id: number) {
     const confirmed = window.confirm(
@@ -232,7 +285,7 @@ export default function InventarioEnvases({
         <div className="flex items-center gap-3">
           <span className="text-xs text-gray-400">Stock calculado en tiempo real</span>
           <button
-            onClick={() => setHistorialOpen(true)}
+            onClick={openHistorialModal}
             className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50"
           >
             <History className="h-3.5 w-3.5" />
@@ -488,9 +541,52 @@ export default function InventarioEnvases({
               </button>
             </div>
 
+            {/* Filtros: Desde / Hasta + Buscar (máx. 31 días) */}
+            <div className="border-b border-gray-100 px-6 py-4">
+              <div className="flex flex-wrap items-end gap-3">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-500">Desde</label>
+                  <input
+                    type="date"
+                    value={historialDesde}
+                    onChange={e => setHistorialDesde(e.target.value)}
+                    className="rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-500">Hasta</label>
+                  <input
+                    type="date"
+                    value={historialHasta}
+                    onChange={e => setHistorialHasta(e.target.value)}
+                    className="rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={fetchHistorial}
+                  disabled={historialLoading}
+                  className="flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:opacity-60"
+                >
+                  {historialLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : null}
+                  Buscar
+                </button>
+              </div>
+              {historialError && (
+                <p className="mt-2 text-sm text-red-600">{historialError}</p>
+              )}
+            </div>
+
             {/* Tabla */}
             <div className="max-h-[60vh] overflow-y-auto">
-              {historial.length === 0 ? (
+              {historialLoading ? (
+                <div className="flex flex-col items-center justify-center py-16">
+                  <Loader2 className="h-8 w-8 animate-spin text-gray-300" />
+                  <p className="mt-2 text-sm text-gray-500">Cargando historial…</p>
+                </div>
+              ) : historial.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 text-center">
                   <History className="mb-3 h-10 w-10 text-gray-200" />
                   <p className="text-sm font-semibold text-gray-600">Sin ajustes registrados</p>

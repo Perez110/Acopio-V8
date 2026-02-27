@@ -81,39 +81,43 @@ function pdfMoney(n: number): string {
   return `$${abs}`;
 }
 
-/** Genera y descarga el informe en formato PDF usando jsPDF + autoTable (carga dinámica). */
+/** Genera y descarga el informe en formato PDF (estilo corporativo). */
 async function exportPDF(
   rows: Row[],
   tab: Tab,
   start: string,
   end: string,
 ) {
-  // Carga dinámica: jsPDF (~400 KB) se descarga solo cuando el usuario la pide,
-  // sin impactar el bundle inicial de la aplicación.
   const { default: jsPDF } = await import('jspdf');
   const { default: autoTable } = await import('jspdf-autotable');
 
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const margin = 14;
   const entidadLabel = tab === 'proveedores' ? 'Proveedores' : 'Clientes';
 
-  // ── Encabezado del documento ────────────────────────────────────────────────
-  doc.setFontSize(18);
+  // ── Header profesional: logo/marca a la izquierda ───────────────────────────
+  doc.setFontSize(22);
   doc.setFont('helvetica', 'bold');
-  doc.setTextColor(30, 41, 59);   // slate-800
-  doc.text(`Estado de Cuenta — ${entidadLabel}`, 14, 18);
+  doc.setTextColor(26, 26, 26);  // #1a1a1a
+  doc.text('ACOPPIO', margin, 14);
 
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
-  doc.setTextColor(100, 116, 139);  // slate-500
-  doc.text(`Período: ${start}  al  ${end}`, 14, 26);
+  doc.setTextColor(80, 80, 80);
+  doc.text(`Estado de Cuenta — ${entidadLabel}`, margin, 21);
 
-  const ahora = new Date().toLocaleString('es-AR', {
-    day: '2-digit', month: '2-digit', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
+  // ── Datos del reporte alineados a la derecha ────────────────────────────────
+  const fechaEmision = new Date().toLocaleDateString('es-AR', {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
   });
-  doc.text(`Generado: ${ahora}`, 14, 32);
+  doc.setFontSize(9);
+  doc.text(`Fecha de emisión: ${fechaEmision}`, pageW - margin, 14, { align: 'right' });
+  doc.text(`Período consultado: ${start}  al  ${end}`, pageW - margin, 19, { align: 'right' });
+  doc.text('Usuario: Sistema Acopio', pageW - margin, 24, { align: 'right' });
 
-  // ── Totales para la fila de pie de tabla ────────────────────────────────────
+  // ── Totales para la fila de pie de tabla ───────────────────────────────────
   const totSaldoAnt = rows.reduce((s, r) => s + r.saldoAnterior, 0);
   const totKilos    = rows.reduce((s, r) => s + r.kilosDelPeriodo, 0);
   const totValor    = rows.reduce((s, r) => s + r.valorGenerado, 0);
@@ -123,9 +127,11 @@ async function exportPDF(
   const fmtSaldo = (n: number) =>
     n === 0 ? 'Saldado' : n > 0 ? pdfMoney(n) : `-${pdfMoney(Math.abs(n))} a favor`;
 
-  // ── Tabla ───────────────────────────────────────────────────────────────────
+  const startY = 30;
+
+  // ── Tabla con estilo corporativo ────────────────────────────────────────────
   autoTable(doc, {
-    startY: 38,
+    startY,
     head: [[
       tab === 'proveedores' ? 'Proveedor' : 'Cliente',
       'Saldo Anterior',
@@ -138,7 +144,6 @@ async function exportPDF(
       const nombre = tab === 'proveedores'
         ? (r as RowProveedor).proveedorNombre
         : (r as RowCliente).clienteNombre;
-
       return [
         nombre,
         r.saldoAnterior === 0 ? '—' : fmtSaldo(r.saldoAnterior),
@@ -157,42 +162,47 @@ async function exportPDF(
       fmtSaldo(totSaldo),
     ]],
 
-    theme: 'grid',
+    theme: 'striped',
 
-    // ── Estilos globales ────────────────────────────────────────────────────
     styles: {
       fontSize: 9,
       cellPadding: { top: 3.5, right: 6, bottom: 3.5, left: 6 },
       overflow: 'linebreak',
-      textColor: [51, 65, 85],      // slate-700
+      textColor: [51, 65, 85],
       halign: 'center',
       valign: 'middle',
-      lineColor: [226, 232, 240],   // slate-200 — líneas ultra finas
-      lineWidth: 0.1,
+      lineColor: [220, 220, 220],
+      lineWidth: 0.08,
     },
 
-    // ── Encabezado: verde agua claro premium ────────────────────────────────
+    // Encabezado: fondo negro sólido, texto blanco
     headStyles: {
-      fillColor: [236, 253, 245],   // emerald-50
-      textColor: [13, 92, 76],      // #0d5c4c — esmeralda primario
+      fillColor: [26, 26, 26],   // #1a1a1a
+      textColor: [255, 255, 255],
       fontSize: 9,
       fontStyle: 'bold',
+      lineWidth: 0.08,
+      lineColor: [26, 26, 26],
     },
 
-    // ── Fila de totales ──────────────────────────────────────────────────────
-    footStyles: {
-      fillColor: [241, 245, 249],   // slate-100
-      textColor: [15, 23, 42],      // slate-950
-      fontStyle: 'bold',
-      fontSize: 9,
-    },
-
-    // ── Filas cebra ──────────────────────────────────────────────────────────
+    // Filas alternas: blanco y gris muy tenue #f9f9f9
     alternateRowStyles: {
-      fillColor: [248, 250, 252],   // slate-50
+      fillColor: [249, 249, 249],
+    },
+    bodyStyles: {
+      fillColor: [255, 255, 255],
     },
 
-    // ── Anchos de columna (sin forzar halign, lo hereda de styles) ───────────
+    // Fila TOTALES: fuente más gruesa, borde superior doble
+    footStyles: {
+      fillColor: [255, 255, 255],
+      textColor: [26, 26, 26],
+      fontStyle: 'bold',
+      fontSize: 10,
+      lineWidth: 0.2,
+      lineColor: [180, 180, 180],
+    },
+
     columnStyles: {
       0: { cellWidth: 55, fontStyle: 'bold' },
       1: { cellWidth: 35 },
@@ -202,36 +212,62 @@ async function exportPDF(
       5: { cellWidth: 40, fontStyle: 'bold' },
     },
 
-    // ── Colorear el Saldo Final según deuda / crédito / saldado ────────────
     didParseCell: (data) => {
-      if (data.section === 'body' && data.column.index === 5) {
+      // Montos negativos / deudas: rojo sutil (no chillón)
+      if (data.section === 'body') {
         const row = rows[data.row.index];
         if (!row) return;
-        if (row.saldoFinal > 0) {
-          data.cell.styles.textColor = [185, 28, 28];   // rojo — deuda pendiente
-        } else if (row.saldoFinal < 0) {
-          data.cell.styles.textColor = [6, 95, 70];     // esmeralda-800 — saldo a favor
-        } else {
-          data.cell.styles.textColor = [21, 128, 61];   // verde — saldado
+        if (data.column.index === 5) {
+          if (row.saldoFinal > 0) {
+            data.cell.styles.textColor = [180, 82, 82];   // rojo sutil — deuda
+          } else if (row.saldoFinal < 0) {
+            data.cell.styles.textColor = [6, 95, 70];     // verde — a favor
+          } else {
+            data.cell.styles.textColor = [100, 116, 139]; // gris — saldado
+          }
+        }
+        if (data.column.index === 1 && row.saldoAnterior > 0) {
+          data.cell.styles.textColor = [180, 82, 82];
         }
       }
     },
 
-    margin: { top: 38, left: 14, right: 14 },
+    didDrawCell: (data) => {
+      // Borde superior doble sobre la fila de TOTALES (solo en la primera celda del foot)
+      if (data.section === 'foot' && data.row.index === 0 && data.column.index === 0) {
+        const footTop = data.cell.y;
+        doc.setDrawColor(160, 160, 160);
+        doc.setLineWidth(0.15);
+        doc.line(margin, footTop, pageW - margin, footTop);
+        doc.setLineWidth(0.08);
+        doc.line(margin, footTop - 0.6, pageW - margin, footTop - 0.6);
+      }
+    },
+
+    margin: { left: margin, right: margin },
     showHead: 'firstPage',
     showFoot: 'lastPage',
   });
 
-  // ── Número de página en cada hoja ───────────────────────────────────────────
+  // ── Footer: número de hoja + texto legal ─────────────────────────────────────
   const totalPags = (doc.internal as unknown as { getNumberOfPages: () => number }).getNumberOfPages();
   for (let i = 1; i <= totalPags; i++) {
     doc.setPage(i);
     doc.setFontSize(8);
-    doc.setTextColor(160, 160, 170);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(120, 120, 120);
     doc.text(
-      `Pagina ${i} de ${totalPags}  |  Sistema de Acopio`,
-      doc.internal.pageSize.getWidth() / 2,
-      doc.internal.pageSize.getHeight() - 8,
+      `Página ${i} de ${totalPags}`,
+      pageW / 2,
+      pageH - 10,
+      { align: 'center' },
+    );
+    doc.setFontSize(7);
+    doc.setTextColor(140, 140, 140);
+    doc.text(
+      'Reporte generado automáticamente por Sistema Acopio',
+      pageW / 2,
+      pageH - 6,
       { align: 'center' },
     );
   }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   TrendingUp,
   TrendingDown,
@@ -65,6 +65,14 @@ type TipoEntidad = 'proveedor' | 'fletero';
 type MetodoPago = 'efectivo' | 'transferencia' | 'cheque' | 'otro';
 
 const today = new Date().toISOString().split('T')[0];
+
+/** Primer día del mes actual (YYYY-MM-01). */
+function getFirstDayOfMonth(): string {
+  const n = new Date();
+  const y = n.getFullYear();
+  const m = String(n.getMonth() + 1).padStart(2, '0');
+  return `${y}-${m}-01`;
+}
 
 const METODO_LABELS: Record<MetodoPago, string> = {
   efectivo: 'Efectivo',
@@ -135,14 +143,25 @@ export default function FormCobrosPagos({
   const [paginaActual, setPaginaActual] = useState<number>(1);
   const ITEMS_PER_PAGE = 50;
   const [loadingPagina, setLoadingPagina] = useState(false);
-  const [desdeHistorial, setDesdeHistorial] = useState('');
-  const [hastaHistorial, setHastaHistorial] = useState('');
+  const [desdeHistorial, setDesdeHistorial] = useState(getFirstDayOfMonth);
+  const [hastaHistorial, setHastaHistorial] = useState(today);
   // ID del movimiento que se está eliminando (null = ninguno)
   const [deletingId, setDeletingId] = useState<number | null>(null);
   // Movimiento pendiente de confirmación en el modal (null = modal cerrado)
   const [movimientoAEliminar, setMovimientoAEliminar] = useState<HistorialItem | null>(null);
 
   const MAX_DIAS_RANGO = 31;
+
+  /** Rango > 31 días: bloquear Filtrar y advertir. */
+  const rangoInvalido = (() => {
+    if (!desdeHistorial || !hastaHistorial) return false;
+    const d1 = new Date(desdeHistorial);
+    const d2 = new Date(hastaHistorial);
+    const diffMs = d2.getTime() - d1.getTime();
+    const diffDias = Math.ceil(diffMs / (24 * 60 * 60 * 1000)) + 1;
+    return diffDias > MAX_DIAS_RANGO;
+  })();
+
   const kpiCobros = historial.reduce((s, h) => s + (h.tipo === 'INGRESO' ? (h.monto ?? 0) : 0), 0);
   const kpiPagos = historial.reduce((s, h) => s + (h.tipo === 'EGRESO' ? (h.monto ?? 0) : 0), 0);
   const kpiBalance = kpiCobros - kpiPagos;
@@ -214,6 +233,13 @@ export default function FormCobrosPagos({
     if (desdeHistorial && hastaHistorial && !validarRangoFechas(desdeHistorial, hastaHistorial)) return;
     cargarPagina(1);
   }
+
+  // Avisar cuando el rango elegido supera 31 días (para que se entienda por qué Filtrar está deshabilitado)
+  useEffect(() => {
+    if (rangoInvalido && desdeHistorial && hastaHistorial) {
+      showToast('error', 'Para optimizar el sistema, el rango máximo de consulta es de 31 días.');
+    }
+  }, [rangoInvalido, desdeHistorial, hastaHistorial]); // eslint-disable-line react-hooks/exhaustive-deps -- solo aviso
 
   async function refetchHistorial() {
     await cargarPagina(1);
@@ -772,9 +798,15 @@ export default function FormCobrosPagos({
               </div>
               <button
                 type="button"
-                onClick={aplicarFiltroFechas}
-                disabled={loadingPagina}
-                className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-slate-600 disabled:opacity-50"
+                onClick={() => {
+                  if (rangoInvalido) {
+                    showToast('error', 'Para optimizar el sistema, el rango máximo de consulta es de 31 días.');
+                    return;
+                  }
+                  aplicarFiltroFechas();
+                }}
+                disabled={loadingPagina || rangoInvalido}
+                className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Filtrar
               </button>

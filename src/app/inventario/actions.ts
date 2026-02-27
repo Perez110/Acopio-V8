@@ -205,3 +205,70 @@ export async function getStockProducto(productoId: number): Promise<{ stock: num
 
   return { stock: parseFloat(Math.max(0, total).toFixed(2)) };
 }
+
+// ── getHistorialAjustes ──────────────────────────────────────────────────────
+const RANGO_MAX_DIAS_AJUSTES = 31;
+
+export interface AjusteHistorialRow {
+  id: number;
+  fecha_movimiento: string | null;
+  envase_id: number | null;
+  envase_nombre: string;
+  tipo_movimiento: string;
+  cantidad: number | null;
+  notas: string | null;
+}
+
+/**
+ * Devuelve el historial de ajustes manuales (AJUSTE_VACIO, AJUSTE_OCUPADO)
+ * filtrado por rango de fechas (created_at). Máximo 31 días.
+ */
+export async function getHistorialAjustes(
+  desde: string,
+  hasta: string,
+): Promise<{ data: AjusteHistorialRow[] | null; error: string | null }> {
+  const dDesde = new Date(desde);
+  const dHasta = new Date(hasta);
+  if (Number.isNaN(dDesde.getTime()) || Number.isNaN(dHasta.getTime())) {
+    return { data: null, error: 'Fechas inválidas.' };
+  }
+  const diffMs = dHasta.getTime() - dDesde.getTime();
+  const diffDias = Math.ceil(diffMs / (1000 * 60 * 60 * 24)) + 1;
+  if (diffDias > RANGO_MAX_DIAS_AJUSTES) {
+    return {
+      data: null,
+      error: 'Para optimizar el sistema, el rango máximo de consulta es de 31 días.',
+    };
+  }
+  if (dDesde > dHasta) {
+    return { data: null, error: 'La fecha Desde no puede ser mayor que Hasta.' };
+  }
+
+  const desdeTs = `${desde}T00:00:00`;
+  const hastaTs = `${hasta}T23:59:59.999`;
+
+  const { data: rows, error } = await supabaseServer
+    .from('Movimientos_Envases')
+    .select('id, fecha_movimiento, envase_id, tipo_movimiento, cantidad, notas, Envases(nombre)')
+    .in('tipo_movimiento', ['AJUSTE_VACIO', 'AJUSTE_OCUPADO'])
+    .gte('created_at', desdeTs)
+    .lte('created_at', hastaTs)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('[getHistorialAjustes]', error);
+    return { data: null, error: error.message };
+  }
+
+  const list: AjusteHistorialRow[] = (rows ?? []).map((r: { id: number; fecha_movimiento: string | null; envase_id: number | null; tipo_movimiento: string; cantidad: number | null; notas: string | null; Envases: { nombre: string | null } | null }) => ({
+    id: r.id,
+    fecha_movimiento: r.fecha_movimiento,
+    envase_id: r.envase_id,
+    envase_nombre: r.Envases?.nombre ?? '—',
+    tipo_movimiento: r.tipo_movimiento,
+    cantidad: r.cantidad,
+    notas: r.notas,
+  }));
+
+  return { data: list, error: null };
+}

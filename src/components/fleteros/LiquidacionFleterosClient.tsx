@@ -118,9 +118,19 @@ export default function LiquidacionFleterosClient({ fleteros }: Props) {
 
   const fleteroSel = fleteros.find(f => String(f.id) === fleteroId);
 
+  // ── Límite de rango (protección rate limit / carga en DB) ───────────────────
+  const RANGO_MAX_DIAS = 31;
+  const diffMs = new Date(hasta).getTime() - new Date(desde).getTime();
+  const diffDias = Math.ceil(diffMs / (1000 * 60 * 60 * 24)) + 1;
+  const rangoExcedido = diffDias > RANGO_MAX_DIAS;
+
   // ── Fetch ─────────────────────────────────────────────────────────────────
   async function fetchDatos() {
     if (!fleteroId) return;
+    if (rangoExcedido) {
+      setError('Para optimizar el sistema, el rango máximo de consulta es de 31 días.');
+      return;
+    }
     setLoading(true);
     setError(null);
 
@@ -293,19 +303,27 @@ export default function LiquidacionFleterosClient({ fleteros }: Props) {
 
         <div>
           <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">Desde</label>
-          <input type="date" value={desde} onChange={e => setDesde(e.target.value)}
-            className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-100" />
+          <input
+            type="date"
+            value={desde}
+            onChange={e => { setDesde(e.target.value); setError(null); }}
+            className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-100"
+          />
         </div>
 
         <div>
           <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">Hasta</label>
-          <input type="date" value={hasta} onChange={e => setHasta(e.target.value)}
-            className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-100" />
+          <input
+            type="date"
+            value={hasta}
+            onChange={e => { setHasta(e.target.value); setError(null); }}
+            className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-100"
+          />
         </div>
 
         <button
           onClick={fetchDatos}
-          disabled={!fleteroId || loading || !desde || !hasta || desde > hasta}
+          disabled={!fleteroId || loading || !desde || !hasta || desde > hasta || rangoExcedido}
           className="flex items-center gap-2 rounded-xl bg-slate-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
