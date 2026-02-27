@@ -83,9 +83,6 @@ function pdfMoney(n: number): string {
   return `$${abs}`;
 }
 
-/** Etiqueta de usuario para firma/auditoría del PDF (nombre real o rol). */
-const PDF_USUARIO_LABEL = 'Franco';
-
 /** Genera y descarga el informe en formato PDF (nombre y logo desde Ajustes Generales). */
 async function exportPDF(
   nombreSistema: string,
@@ -137,14 +134,13 @@ async function exportPDF(
   doc.setTextColor(100, 116, 139);
   doc.text(`Estado de Cuenta — ${entidadLabel}`, margin, 28);
 
-  // ── Fecha, período y usuario a la derecha, en columna, mismo margen derecho ───
+  // ── Fecha y período a la derecha, mismo margen derecho ─────────────────────────
   const fechaEmision = new Date().toLocaleDateString('es-AR', {
     day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
   });
   doc.setTextColor(80, 80, 80);
   doc.text(`Fecha de emisión: ${fechaEmision}`, pageW - margin, 12, { align: 'right' });
   doc.text(`Período: ${start} al ${end}`, pageW - margin, 17, { align: 'right' });
-  doc.text(`Usuario: ${PDF_USUARIO_LABEL}`, pageW - margin, 20, { align: 'right' });
 
   // ── Totales para resumen y pie de tabla ──────────────────────────────────────
   const totSaldoAnt = rows.reduce((s, r) => s + r.saldoAnterior, 0);
@@ -409,10 +405,6 @@ async function exportPDF(
     doc.setFontSize(7);
     doc.setTextColor(140, 140, 140);
     doc.text(`${nombreSistema} — Documento generado automáticamente`, pageW / 2, footerY + 4, { align: 'center' });
-
-    doc.setFontSize(8);
-    doc.setTextColor(120, 120, 120);
-    doc.text(`Usuario: ${PDF_USUARIO_LABEL}`, pageW - margin, footerY, { align: 'right' });
 
     doc.setFillColor(40, 40, 40);
     const seed = (i * 31 + start.length + end.length) % 97;
