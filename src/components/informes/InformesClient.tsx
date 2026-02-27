@@ -266,7 +266,7 @@ async function exportPDF(
     headStyles: {
       fillColor: [26, 26, 26],
       textColor: [255, 255, 255],
-      fontSize: 9,
+      fontSize: 7,
       fontStyle: 'bold',
       lineWidth: 0.08,
       lineColor: [26, 26, 26],
@@ -291,9 +291,9 @@ async function exportPDF(
     columnStyles: {
       0: { cellWidth: (pageW - 2 * margin) * 0.22, fontStyle: 'bold', halign: 'left' },
       1: { cellWidth: (pageW - 2 * margin) * 0.14, halign: 'right' },
-      2: { cellWidth: (pageW - 2 * margin) * 0.14, halign: 'right' },
+      2: { cellWidth: (pageW - 2 * margin) * 0.16, halign: 'right' },
       3: { cellWidth: (pageW - 2 * margin) * 0.14, halign: 'right' },
-      4: { cellWidth: (pageW - 2 * margin) * 0.14, halign: 'right' },
+      4: { cellWidth: (pageW - 2 * margin) * 0.12, halign: 'right' },
       5: { cellWidth: (pageW - 2 * margin) * 0.22, fontStyle: 'bold', halign: 'right' },
     },
 
@@ -359,19 +359,21 @@ async function exportPDF(
     });
   }
 
-  // ── Footer: izquierda (barcode) | centro (página + documento) | derecha (usuario), alineados al centro ─
+  // ── Footer: izquierda (barcode) | centro (página + documento) | derecha (usuario) ─
   const totalPags = (doc.internal as unknown as { getNumberOfPages: () => number }).getNumberOfPages();
-  const footerY = pageH - 12;
+  const footerMarginBottom = 18;
+  const footerY = pageH - footerMarginBottom;
   const barcodeH = 5;
-  const barcodeY = footerY - 2;
+  const barcodeY = pageH - footerMarginBottom - 4;
 
   for (let i = 1; i <= totalPags; i++) {
     doc.setPage(i);
-    doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
-    doc.setTextColor(120, 120, 120);
 
+    doc.setFontSize(8);
+    doc.setTextColor(120, 120, 120);
     doc.text(`Página ${i} de ${totalPags}`, pageW / 2, footerY, { align: 'center' });
+
     doc.setFontSize(7);
     doc.setTextColor(140, 140, 140);
     doc.text(`${nombreSistema} — Documento generado automáticamente`, pageW / 2, footerY + 4, { align: 'center' });
