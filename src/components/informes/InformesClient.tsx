@@ -217,7 +217,23 @@ async function exportPDF(
 
   const startY = kpiY + kpiH + 6;
 
-  // ── Tabla: 6 columnas como en la web (Proveedor | Saldo Anterior | Kilos | Valor | Dinero Movido | Saldo Final) ─
+  const anchoUtil = pageW - 2 * margin;
+  const colWidths = [
+    anchoUtil * 0.22,
+    anchoUtil * 0.14,
+    anchoUtil * 0.16,
+    anchoUtil * 0.14,
+    anchoUtil * 0.12,
+    anchoUtil * 0.22,
+  ];
+  const xCol: number[] = [];
+  let sum = margin;
+  for (let c = 0; c < 6; c++) {
+    xCol[c] = sum;
+    sum += colWidths[c];
+  }
+
+  // ── Tabla: 6 columnas (sin foot; la fila TOTALES se dibuja después con las mismas coordenadas) ─
   autoTable(doc, {
     startY,
     head: [[
@@ -241,14 +257,6 @@ async function exportPDF(
         fmtSaldo(r.saldoFinal),
       ];
     }),
-    foot: [[
-      `TOTALES — ${rows.length} ${totalesLabel}`,
-      totSaldoAnt !== 0 ? fmtSaldo(totSaldoAnt) : '—',
-      `${totKilos.toFixed(2)} kg`,
-      pdfMoney(totValor),
-      pdfMoney(totMovido),
-      fmtSaldo(totSaldo),
-    ]],
 
     theme: 'striped',
 
@@ -289,12 +297,12 @@ async function exportPDF(
     },
 
     columnStyles: {
-      0: { cellWidth: (pageW - 2 * margin) * 0.22, fontStyle: 'bold', halign: 'left' },
-      1: { cellWidth: (pageW - 2 * margin) * 0.14, halign: 'center' },
-      2: { cellWidth: (pageW - 2 * margin) * 0.16, halign: 'center' },
-      3: { cellWidth: (pageW - 2 * margin) * 0.14, halign: 'center' },
-      4: { cellWidth: (pageW - 2 * margin) * 0.12, halign: 'center' },
-      5: { cellWidth: (pageW - 2 * margin) * 0.22, fontStyle: 'bold', halign: 'center' },
+      0: { cellWidth: colWidths[0], fontStyle: 'bold', halign: 'left' },
+      1: { cellWidth: colWidths[1], halign: 'center' },
+      2: { cellWidth: colWidths[2], halign: 'center' },
+      3: { cellWidth: colWidths[3], halign: 'center' },
+      4: { cellWidth: colWidths[4], halign: 'center' },
+      5: { cellWidth: colWidths[5], fontStyle: 'bold', halign: 'center' },
     },
     didParseCell: (data) => {
       if (data.section === 'head' && data.column.index === 0) {
@@ -316,34 +324,57 @@ async function exportPDF(
           data.cell.styles.textColor = [180, 82, 82];
         }
       }
-      if (data.section === 'foot' && data.column.index === 5) {
-        if (totSaldo > 0) data.cell.styles.textColor = [180, 82, 82];
-        else if (totSaldo < 0) data.cell.styles.textColor = [6, 95, 70];
-      }
-    },
-
-    didDrawCell: (data) => {
-      if (data.section === 'foot' && data.row.index === 0 && data.column.index === 0) {
-        const footTop = data.cell.y;
-        doc.setDrawColor(160, 160, 160);
-        doc.setLineWidth(0.15);
-        doc.line(margin, footTop, pageW - margin, footTop);
-        doc.setLineWidth(0.08);
-        doc.line(margin, footTop - 0.6, pageW - margin, footTop - 0.6);
-      }
     },
 
     margin: { left: margin, right: margin },
     showHead: 'firstPage',
-    showFoot: 'lastPage',
   });
 
-  // ── Leyenda: 4 ítems en cuartos iguales del ancho útil, cuadro y texto centrados ─
+  let contentBottomY: number | null = null;
+  if (rows.length > 0) {
+    const tableFinalYForTotales = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY;
+    if (tableFinalYForTotales != null) {
+      const totalPagsAntes = (doc.internal as unknown as { getNumberOfPages: () => number }).getNumberOfPages();
+      doc.setPage(totalPagsAntes);
+      const totalesRowH = 8;
+      const totalesY = tableFinalYForTotales + 4;
+      contentBottomY = totalesY + totalesRowH;
+      doc.setDrawColor(160, 160, 160);
+      doc.setLineWidth(0.15);
+      doc.line(margin, totalesY, pageW - margin, totalesY);
+      doc.setLineWidth(0.08);
+      doc.line(margin, totalesY - 0.6, pageW - margin, totalesY - 0.6);
+      doc.setFillColor(248, 249, 250);
+      doc.rect(margin, totalesY, anchoUtil, totalesRowH, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.setTextColor(26, 26, 26);
+      const totalesTexts = [
+        `TOTALES — ${rows.length} ${totalesLabel}`,
+        totSaldoAnt !== 0 ? fmtSaldo(totSaldoAnt) : '—',
+        `${totKilos.toFixed(2)} kg`,
+        pdfMoney(totValor),
+        pdfMoney(totMovido),
+        fmtSaldo(totSaldo),
+      ];
+      const totalesTextY = totalesY + totalesRowH / 2 + 1.5;
+      doc.text(totalesTexts[0], xCol[0] + 2, totalesTextY, { align: 'left' });
+      for (let c = 1; c <= 5; c++) {
+        if (c === 5 && totSaldo > 0) doc.setTextColor(180, 82, 82);
+        else if (c === 5 && totSaldo < 0) doc.setTextColor(6, 95, 70);
+        doc.text(totalesTexts[c], xCol[c] + colWidths[c] / 2, totalesTextY, { align: 'center' });
+        if (c === 5) doc.setTextColor(26, 26, 26);
+      }
+    }
+  }
+
+  // ── Leyenda: 4 ítems centrados en cada cuarto del ancho, cuadro y texto alineados verticalmente ─
   const tableFinalY = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY;
-  if (rows.length > 0 && tableFinalY != null && tableFinalY < pageH - 28) {
+  const leyendaStartY = contentBottomY ?? tableFinalY ?? 0;
+  if (rows.length > 0 && leyendaStartY > 0 && leyendaStartY < pageH - 28) {
     doc.setPage(1);
-    const anchoUtil = pageW - 2 * margin;
-    const leyendaY = tableFinalY + 8;
+    const paso = anchoUtil / 4;
+    const leyendaY = leyendaStartY + 8;
     doc.setFontSize(7);
     doc.setFont('helvetica', 'normal');
     const leyendas = [
@@ -353,9 +384,9 @@ async function exportPDF(
       { color: [34, 197, 94] as [number, number, number], text: 'Saldado en el período' },
     ];
     leyendas.forEach((l, idx) => {
-      const leyendaX = margin + anchoUtil * (idx * 0.25);
+      const leyendaX = margin + paso * (idx + 0.1);
       doc.setFillColor(...l.color);
-      doc.rect(leyendaX + 1, leyendaY - 1, 2, 2, 'F');
+      doc.rect(leyendaX, leyendaY - 1.5, 2.5, 2.5, 'F');
       doc.setTextColor(80, 80, 80);
       doc.text(l.text, leyendaX + 4, leyendaY);
     });
