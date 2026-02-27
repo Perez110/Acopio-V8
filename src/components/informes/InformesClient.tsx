@@ -257,7 +257,6 @@ async function exportPDF(
       cellPadding: { top: 3.5, right: 6, bottom: 3.5, left: 6 },
       overflow: 'linebreak',
       textColor: [51, 65, 85],
-      halign: 'left',
       valign: 'middle',
       lineColor: [220, 220, 220],
       lineWidth: 0.08,
@@ -268,6 +267,7 @@ async function exportPDF(
       textColor: [255, 255, 255],
       fontSize: 7,
       fontStyle: 'bold',
+      halign: 'center',
       lineWidth: 0.08,
       lineColor: [26, 26, 26],
     },
@@ -296,8 +296,10 @@ async function exportPDF(
       4: { cellWidth: (pageW - 2 * margin) * 0.12, halign: 'center' },
       5: { cellWidth: (pageW - 2 * margin) * 0.22, fontStyle: 'bold', halign: 'center' },
     },
-
     didParseCell: (data) => {
+      if (data.section === 'head' && data.column.index === 0) {
+        data.cell.styles.halign = 'left';
+      }
       if (data.section === 'body') {
         const row = rows[data.row.index];
         if (!row) return;
