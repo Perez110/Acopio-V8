@@ -78,7 +78,7 @@ export default function ChequesClient({
   const [accionandoId, setAccionandoId] = useState<number | null>(null);
   const [menuAbiertoId, setMenuAbiertoId] = useState<number | null>(null);
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
-  const [toast, setToast] = useState<{ type: 'error' | 'success'; msg: string } | null>(null);
+  const [toast, setToast] = useState<{ type: 'error' | 'success' | 'info'; msg: string } | null>(null);
   const [chequeAEliminar, setChequeAEliminar] = useState<ChequeRow | null>(null);
   const [eliminandoCheque, setEliminandoCheque] = useState(false);
   const [chequeADepositar, setChequeADepositar] = useState<ChequeRow | null>(null);
@@ -120,7 +120,7 @@ export default function ChequesClient({
     });
   }, [chequeADepositar]);
 
-  function showToast(type: 'error' | 'success', msg: string) {
+  function showToast(type: 'error' | 'success' | 'info', msg: string) {
     setToast({ type, msg });
     setTimeout(() => setToast(null), 5000);
   }
@@ -216,10 +216,20 @@ export default function ChequesClient({
       {toast && (
         <div
           className={`flex items-center gap-2 rounded-xl border px-4 py-3 text-sm font-medium ${
-            toast.type === 'error' ? 'border-red-200 bg-red-50 text-red-700' : 'border-green-200 bg-green-50 text-green-700'
+            toast.type === 'error'
+              ? 'border-red-200 bg-red-50 text-red-700'
+              : toast.type === 'info'
+                ? 'border-sky-200 bg-sky-50 text-sky-800'
+                : 'border-green-200 bg-green-50 text-green-700'
           }`}
         >
-          {toast.type === 'error' ? <AlertTriangle className="h-5 w-5 shrink-0" /> : <CheckCircle className="h-5 w-5 shrink-0" />}
+          {toast.type === 'error' ? (
+            <AlertTriangle className="h-5 w-5 shrink-0" />
+          ) : toast.type === 'info' ? (
+            <Send className="h-5 w-5 shrink-0" />
+          ) : (
+            <CheckCircle className="h-5 w-5 shrink-0" />
+          )}
           <span className="flex-1">{toast.msg}</span>
           <button type="button" onClick={() => setToast(null)} className="opacity-70 hover:opacity-100">✕</button>
         </div>
@@ -422,6 +432,9 @@ export default function ChequesClient({
                                 }
                                 setAccionandoId(null);
                               });
+                            } else if (est === 'ENDOSADO') {
+                              cerrarMenu();
+                              showToast('info', 'Para endosar un cheque, registrá un pago en Cobros y Pagos seleccionando este cheque.');
                             } else {
                               cambiarEstado(row.id, est);
                             }
