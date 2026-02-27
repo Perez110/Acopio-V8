@@ -10,21 +10,20 @@ import { getSaldoActualCuenta } from '@/lib/get-saldo-cuenta';
  * - Si es EGRESO (pago): borra solo de Movimientos_Financieros. Los RPC
  *   get_saldos_proveedores/get_saldos_clientes recalculan al cargar Cuentas Corrientes;
  *   al quitar el pago, el saldo de la entidad sube y, si pasa a > 0, vuelve a Saldos Activos.
- * - Si es INGRESO (cobro): borra de Movimientos_Financieros y elimina el registro gemelo
- *   en Cobros_Clientes (vinculado por cliente_id + monto + fecha). Idem: el saldo del
- *   cliente se recalcula y puede volver a Saldos Activos.
+ * - Si es INGRESO (cobro): borra el gemelo en Cobros_Clientes primero (match por
+ *   cliente_id + monto + fecha); si ese delete falla no se borra el movimiento para
+ *   no dejar huérfanos. Luego borra de Movimientos_Financieros.
  *
- * Revalida /cobros-pagos, /cuentas-corrientes (layout) y /cajas-bancos para que la
- * próxima visita a Cuentas Corrientes muestre saldos y pestañas Activos/Cerrados correctos.
+ * Revalida /cobros-pagos, /cuentas-corrientes (layout) y /cajas-bancos.
  */
 export async function deleteMovimientoFinanciero(
   id: number
 ): Promise<{ error?: string }> {
   try {
-    // 1. Leer el movimiento para saber tipo y datos de búsqueda
+    // 1. Leer el movimiento (con created_at para emparejar gemelo cuando hay varios el mismo día)
     const { data: mov, error: fetchErr } = await supabaseServer
       .from('Movimientos_Financieros')
-      .select('id, tipo, monto, fecha, cliente_id, proveedor_id')
+      .select('id, tipo, monto, fecha, cliente_id, proveedor_id, created_at')
       .eq('id', id)
       .single();
 
@@ -34,31 +33,60 @@ export async function deleteMovimientoFinanciero(
     }
 
     // 2. Si es INGRESO (cobro de cliente) → borrar el gemelo en Cobros_Clientes
-    if (mov.tipo === 'INGRESO' && mov.cliente_id) {
-      // Buscamos el registro más reciente que coincida en los tres campos
-      // que se escribieron juntos en el insert atómico de FormCobrosPagos
+    if (mov.tipo === 'INGRESO' && mov.cliente_id != null) {
+      const clienteId = Number(mov.cliente_id);
+      const montoNum = Number(mov.monto);
+      // Fecha: normalizar a YYYY-MM-DD por si viene con hora desde la DB
+      const fechaDay = (mov.fecha && typeof mov.fecha === 'string')
+        ? mov.fecha.slice(0, 10)
+        : String(mov.fecha ?? '').slice(0, 10);
+
       const { data: cobros, error: fetchCobroErr } = await supabaseServer
         .from('Cobros_Clientes')
-        .select('id')
-        .eq('cliente_id', mov.cliente_id)
-        .eq('monto', mov.monto)
-        .eq('fecha_cobro', mov.fecha)
+        .select('id, created_at, fecha_cobro, monto')
+        .eq('cliente_id', clienteId)
         .order('created_at', { ascending: false })
-        .limit(1);
+        .limit(50);
 
       if (fetchCobroErr) {
         console.error('[deleteMovimiento] fetch Cobros_Clientes error:', fetchCobroErr);
+        return { error: 'No se pudo verificar cobros del cliente. No se eliminó el movimiento.' };
       }
 
-      if (cobros && cobros.length > 0) {
+      // Filtrar en JS: mismo monto (tolerancia centavos) y misma fecha (solo día)
+      const movCreated = mov.created_at ? new Date(mov.created_at).getTime() : 0;
+      const candidatos = (cobros ?? []).filter((c) => {
+        const mismoMonto = Math.abs(Number(c.monto ?? 0) - montoNum) < 0.01;
+        const fechaCobroDay = (c.fecha_cobro && typeof c.fecha_cobro === 'string')
+          ? c.fecha_cobro.slice(0, 10)
+          : String(c.fecha_cobro ?? '').slice(0, 10);
+        const mismaFecha = fechaCobroDay === fechaDay;
+        return mismoMonto && mismaFecha;
+      });
+
+      // Elegir el cobro con created_at más próximo al del movimiento (gemelo del mismo insert)
+      const cobroId =
+        candidatos.length === 0
+          ? null
+          : candidatos.length === 1
+            ? candidatos[0].id
+            : candidatos.sort((a, b) => {
+                const tA = a.created_at ? new Date(a.created_at).getTime() : 0;
+                const tB = b.created_at ? new Date(b.created_at).getTime() : 0;
+                return Math.abs(tA - movCreated) - Math.abs(tB - movCreated);
+              })[0].id;
+
+      if (cobroId != null) {
         const { error: delCobroErr } = await supabaseServer
           .from('Cobros_Clientes')
           .delete()
-          .eq('id', cobros[0].id);
+          .eq('id', cobroId);
 
         if (delCobroErr) {
-          // Log pero seguimos: al menos borramos el movimiento financiero
           console.error('[deleteMovimiento] delete Cobros_Clientes error:', delCobroErr);
+          return {
+            error: 'No se pudo eliminar el cobro asociado. No se eliminó el movimiento para evitar datos inconsistentes.',
+          };
         }
       }
     }
@@ -74,9 +102,6 @@ export async function deleteMovimientoFinanciero(
       return { error: delErr.message };
     }
 
-    // 4. Revalidar rutas afectadas. Cuentas Corrientes usa RPC (saldos en vivo):
-    //    al borrar este movimiento, el saldo de la entidad se recalcula en la próxima
-    //    carga; si saldo > 0, la entidad vuelve a "Saldos Activos".
     revalidatePath('/cobros-pagos');
     revalidatePath('/cuentas-corrientes', 'layout');
     revalidatePath('/cajas-bancos');
