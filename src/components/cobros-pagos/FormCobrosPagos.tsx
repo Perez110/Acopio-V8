@@ -20,8 +20,10 @@ import {
   deleteMovimientoFinanciero,
   getHistorialMovimientos,
   getChequesEnCartera,
+  getSaldoEntidad,
   registerCobroConCheque,
   registerPagoConCheque,
+  registerPagoEgreso,
   revalidateRutasFinanzas,
   type HistorialPaginadoResult,
   type ChequeEnCarteraOption,
@@ -149,8 +151,44 @@ export default function FormCobrosPagos({
   const [deletingId, setDeletingId] = useState<number | null>(null);
   // Movimiento pendiente de confirmación en el modal (null = modal cerrado)
   const [movimientoAEliminar, setMovimientoAEliminar] = useState<HistorialItem | null>(null);
+  // Saldo de la entidad seleccionada (para mostrar debajo del monto)
+  const [saldoEntidad, setSaldoEntidad] = useState<number | null>(null);
+  const [loadingSaldo, setLoadingSaldo] = useState(false);
 
   const MAX_DIAS_RANGO = 31;
+
+  // ── Fetch saldo al seleccionar cliente / proveedor / fletero ─────────────────
+  useEffect(() => {
+    if (operacion === 'cobro' && clienteId) {
+      setLoadingSaldo(true);
+      setSaldoEntidad(null);
+      getSaldoEntidad(Number(clienteId), 'cliente').then(({ saldo, error }) => {
+        setLoadingSaldo(false);
+        if (!error) setSaldoEntidad(saldo);
+      });
+      return;
+    }
+    if (operacion === 'pago' && tipoEntidad === 'proveedor' && proveedorId) {
+      setLoadingSaldo(true);
+      setSaldoEntidad(null);
+      getSaldoEntidad(Number(proveedorId), 'proveedor').then(({ saldo, error }) => {
+        setLoadingSaldo(false);
+        if (!error) setSaldoEntidad(saldo);
+      });
+      return;
+    }
+    if (operacion === 'pago' && tipoEntidad === 'fletero' && fleteroId) {
+      setLoadingSaldo(true);
+      setSaldoEntidad(null);
+      getSaldoEntidad(Number(fleteroId), 'fletero').then(({ saldo, error }) => {
+        setLoadingSaldo(false);
+        if (!error) setSaldoEntidad(saldo);
+      });
+      return;
+    }
+    setSaldoEntidad(null);
+    setLoadingSaldo(false);
+  }, [operacion, tipoEntidad, clienteId, proveedorId, fleteroId]);
 
   /** Rango > 31 días: bloquear Filtrar y advertir. */
   const rangoInvalido = (() => {
@@ -402,9 +440,8 @@ export default function FormCobrosPagos({
           setChequesEnCarteraList(actualizados);
           showToast('success', `Pago con cheque a ${nombreEntidad} registrado.`);
         } else {
-          const { error } = await supabase.from('Movimientos_Financieros').insert({
+          const { error } = await registerPagoEgreso({
             fecha,
-            tipo: 'EGRESO',
             monto: montoNum,
             descripcion: descripcion || `Pago ${tipoEntidad} — ${nombreEntidad}`,
             metodo_pago: metodoPago,
@@ -413,8 +450,10 @@ export default function FormCobrosPagos({
             proveedor_id: esProveedor ? Number(proveedorId) : null,
             fletero_id: !esProveedor ? Number(fleteroId) : null,
           });
-          if (error) throw error;
-          await revalidateRutasFinanzas();
+          if (error) {
+            showToast('error', error);
+            return;
+          }
           showToast('success', `Pago de ${formatCurrency(montoNum)} a ${nombreEntidad} registrado.`);
         }
       }
@@ -608,6 +647,43 @@ export default function FormCobrosPagos({
                 </select>
               </Field>
             </div>
+
+            {/* Saldo de la entidad + [Saldar Total] */}
+            {((operacion === 'cobro' && clienteId) || (operacion === 'pago' && (proveedorId || fleteroId))) && (
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                {loadingSaldo ? (
+                  <span className="flex items-center gap-1.5 text-slate-500">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Calculando saldo....
+                  </span>
+                ) : saldoEntidad !== null ? (
+                  <>
+                    <span
+                      className={
+                        operacion === 'pago' && saldoEntidad > 0
+                          ? 'font-medium text-red-600'
+                          : 'font-medium text-green-600'
+                      }
+                    >
+                      {operacion === 'cobro'
+                        ? saldoEntidad > 0
+                          ? `Nos debe: ${formatCurrency(saldoEntidad)}`
+                          : 'Saldo al día'
+                        : saldoEntidad > 0
+                          ? `Deuda pendiente: ${formatCurrency(saldoEntidad)}`
+                          : 'Al día'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setMonto(String(Math.abs(saldoEntidad)))}
+                      className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50"
+                    >
+                      Saldar Total
+                    </button>
+                  </>
+                ) : null}
+              </div>
+            )}
 
             {/* Cobro + Cheque: datos del cheque */}
             {operacion === 'cobro' && metodoPago === 'cheque' && (

@@ -243,7 +243,11 @@ export default function CajasBancosClient({
     });
 
     setMovSaving(false);
-    if (error) { setMovError(error); return; }
+    if (error) {
+      setMovError(error);
+      showToast('error', error);
+      return;
+    }
 
     showToast('success', 'Movimiento interno registrado correctamente.');
     setMovModalOpen(false);
@@ -614,12 +618,16 @@ export default function CajasBancosClient({
                       <td className="whitespace-nowrap px-4 py-2.5 text-slate-700">{it.fecha}</td>
                       <td className="min-w-[12rem] break-words px-4 py-2.5 text-slate-900">{it.concepto}</td>
                       <td className="px-4 py-2.5 text-center">
-                        <span className={it.tipo === 'INGRESO' ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
-                          {it.tipo}
+                        <span className={
+                          it.tipo === 'INGRESO' ? 'text-green-600 font-medium' :
+                          it.tipo === 'EGRESO' ? 'text-red-600 font-medium' :
+                          'text-amber-600 font-medium'
+                        }>
+                          {it.tipo === 'EN_CLEARING' ? 'EN CLEARING' : it.tipo}
                         </span>
                       </td>
                       <td className="px-4 py-2.5 text-right font-mono">
-                        {it.tipo === 'INGRESO' ? '+' : '−'}${Math.abs(it.monto).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                        {it.tipo === 'EN_CLEARING' ? '+' : it.tipo === 'INGRESO' ? '+' : '−'}${Math.abs(it.monto).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                       </td>
                     </tr>
                   ))}

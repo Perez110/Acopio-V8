@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { supabaseServer } from '@/lib/supabase-server';
+import { getSaldoActualCuenta } from '@/lib/get-saldo-cuenta';
 
 /**
  * Elimina un movimiento financiero por su ID.
@@ -230,6 +231,11 @@ export async function registerCobroConCheque(params: {
   }
 }
 
+function formatFondosInsuficientes(saldoActual: number): string {
+  const fmt = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(saldoActual);
+  return `Fondos insuficientes. El saldo actual de la cuenta es de ${fmt}.`;
+}
+
 export async function registerPagoConCheque(params: {
   fecha: string;
   tipoEntidad: 'proveedor' | 'fletero';
@@ -242,6 +248,11 @@ export async function registerPagoConCheque(params: {
   chequeId: number;
 }): Promise<{ error?: string }> {
   try {
+    if (params.cuentaId != null) {
+      const { saldo, error: errSaldo } = await getSaldoActualCuenta(params.cuentaId);
+      if (errSaldo) return { error: errSaldo };
+      if (params.monto > saldo) return { error: formatFondosInsuficientes(saldo) };
+    }
     const { error: errMov } = await supabaseServer.from('Movimientos_Financieros').insert({
       fecha: params.fecha,
       tipo: 'EGRESO',
@@ -281,6 +292,133 @@ export async function registerPagoConCheque(params: {
   } catch (err) {
     console.error('[registerPagoConCheque] unexpected:', err);
     return { error: 'Error inesperado al registrar el pago con cheque.' };
+  }
+}
+
+/**
+ * Registra un pago (egreso) sin cheque. Valida fondos insuficientes antes de insertar.
+ */
+export async function registerPagoEgreso(params: {
+  fecha: string;
+  monto: number;
+  descripcion: string | null;
+  metodo_pago: string;
+  referencia: string | null;
+  cuenta_financiera_id: number | null;
+  proveedor_id: number | null;
+  fletero_id: number | null;
+}): Promise<{ error?: string }> {
+  try {
+    if (params.cuenta_financiera_id != null) {
+      const { saldo, error: errSaldo } = await getSaldoActualCuenta(params.cuenta_financiera_id);
+      if (errSaldo) return { error: errSaldo };
+      if (params.monto > saldo) return { error: formatFondosInsuficientes(saldo) };
+    }
+    const { error: errMov } = await supabaseServer.from('Movimientos_Financieros').insert({
+      fecha: params.fecha,
+      tipo: 'EGRESO',
+      monto: params.monto,
+      descripcion: params.descripcion ?? 'Pago',
+      metodo_pago: params.metodo_pago,
+      referencia: params.referencia ?? null,
+      cuenta_financiera_id: params.cuenta_financiera_id,
+      proveedor_id: params.proveedor_id,
+      fletero_id: params.fletero_id,
+    });
+    if (errMov) {
+      console.error('[registerPagoEgreso] insert:', errMov);
+      return { error: errMov.message };
+    }
+    revalidatePath('/cobros-pagos');
+    revalidatePath('/cuentas-corrientes');
+    revalidatePath('/cajas-bancos');
+    return {};
+  } catch (err) {
+    console.error('[registerPagoEgreso] unexpected:', err);
+    return { error: 'Error inesperado al registrar el pago.' };
+  }
+}
+
+/**
+ * Obtiene el saldo actual de una entidad (cliente, proveedor o fletero).
+ * Misma lógica que alimenta Cuentas Corrientes.
+ * - Cliente: total_facturado − total_cobrado (> 0 = nos debe).
+ * - Proveedor: total_comprado − total_pagado (> 0 = les debemos).
+ * - Fletero: valor generado (viajes + vacíos) − pagos (> 0 = les debemos).
+ */
+export async function getSaldoEntidad(
+  id: number,
+  tipo: 'cliente' | 'proveedor' | 'fletero',
+): Promise<{ saldo: number; error?: string }> {
+  try {
+    if (tipo === 'cliente') {
+      const { data: rows, error } = await supabaseServer.rpc('get_saldos_clientes');
+      if (error) {
+        console.error('[getSaldoEntidad] get_saldos_clientes:', error);
+        return { saldo: 0, error: 'Error al obtener saldo del cliente.' };
+      }
+      const fila = (rows ?? []).find((r: { cliente_id: number }) => r.cliente_id === id);
+      if (!fila) return { saldo: 0 };
+      const totalFacturado = Number((fila as { total_facturado?: number }).total_facturado ?? 0);
+      const totalCobrado = Number((fila as { total_cobrado?: number }).total_cobrado ?? 0);
+      const saldo = parseFloat((totalFacturado - totalCobrado).toFixed(2));
+      return { saldo };
+    }
+
+    if (tipo === 'proveedor') {
+      const { data: rows, error } = await supabaseServer.rpc('get_saldos_proveedores');
+      if (error) {
+        console.error('[getSaldoEntidad] get_saldos_proveedores:', error);
+        return { saldo: 0, error: 'Error al obtener saldo del proveedor.' };
+      }
+      const fila = (rows ?? []).find((r: { proveedor_id: number }) => r.proveedor_id === id);
+      if (!fila) return { saldo: 0 };
+      const totalComprado = Number((fila as { total_comprado?: number }).total_comprado ?? 0);
+      const totalPagado = Number((fila as { total_pagado?: number }).total_pagado ?? 0);
+      const saldo = parseFloat((totalComprado - totalPagado).toFixed(2));
+      return { saldo };
+    }
+
+    // Fletero: valor generado (viajes + vacíos) − pagos
+    const { data: fletero, error: errF } = await supabaseServer
+      .from('Fleteros')
+      .select('precio_por_kg, precio_viaje_vacios')
+      .eq('id', id)
+      .single();
+    if (errF || !fletero) return { saldo: 0 };
+    const precioPorKg = Number(fletero.precio_por_kg ?? 0);
+    const tarifaVacios = Number(fletero.precio_viaje_vacios ?? 0);
+
+    const { data: viajes } = await supabaseServer
+      .from('Salidas_Fruta')
+      .select('peso_llegada_cliente_kg, peso_salida_acopio_kg, estado_conciliacion')
+      .eq('fletero_id', id);
+    let valorViajes = 0;
+    for (const v of (viajes ?? []) as { peso_llegada_cliente_kg?: number; peso_salida_acopio_kg?: number; estado_conciliacion?: string }[]) {
+      const llegada = Number(v.peso_llegada_cliente_kg ?? 0);
+      const salida = Number(v.peso_salida_acopio_kg ?? 0);
+      const kg = (v.estado_conciliacion === 'CONCILIADO' && llegada > 0) ? llegada : salida;
+      valorViajes += kg * precioPorKg;
+    }
+
+    const { count: countVacios } = await supabaseServer
+      .from('Movimientos_Envases')
+      .select('id', { count: 'exact', head: true })
+      .eq('fletero_id', id);
+    const valorVacios = (countVacios ?? 0) * tarifaVacios;
+
+    const { data: pagos } = await supabaseServer
+      .from('Movimientos_Financieros')
+      .select('monto')
+      .eq('fletero_id', id)
+      .eq('tipo', 'EGRESO');
+    const totalPagado = (pagos ?? []).reduce((s: number, r: { monto?: number }) => s + Number(r.monto ?? 0), 0);
+
+    const saldo = parseFloat((valorViajes + valorVacios - totalPagado).toFixed(2));
+    return { saldo };
+  } catch (e) {
+    console.error('[getSaldoEntidad]', e);
+    return { saldo: 0, error: 'Error al calcular el saldo.' };
   }
 }
 

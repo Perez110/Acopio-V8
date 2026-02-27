@@ -2,6 +2,7 @@
 
 import { supabaseServer } from '@/lib/supabase-server';
 import { revalidatePath } from 'next/cache';
+import { getSaldoActualCuenta } from '@/lib/get-saldo-cuenta';
 
 interface MovimientoInternoData {
   tipo_operacion: string;
@@ -11,13 +12,25 @@ interface MovimientoInternoData {
   descripcion: string;
 }
 
+function formatFondosInsuficientes(saldoActual: number): string {
+  const fmt = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(saldoActual);
+  return `Fondos insuficientes. El saldo actual de la cuenta es de ${fmt}.`;
+}
+
 /**
  * Registra un movimiento interno de dinero (transferencia, gasto, ingreso extra o retiro de socio).
- * El RPC get_saldos_cuentas ya procesa esta tabla automáticamente para actualizar saldos.
+ * Valida que la cuenta de origen no quede en negativo.
  */
 export async function registrarMovimientoInterno(
   data: MovimientoInternoData,
 ): Promise<{ error: string | null }> {
+  const debitaOrigen = ['TRANSFERENCIA', 'GASTO', 'RETIRO_SOCIO'].includes(data.tipo_operacion);
+  if (debitaOrigen && data.cuenta_origen_id != null) {
+    const { saldo, error: errSaldo } = await getSaldoActualCuenta(data.cuenta_origen_id);
+    if (errSaldo) return { error: errSaldo };
+    if (data.monto > saldo) return { error: formatFondosInsuficientes(saldo) };
+  }
+
   const { error } = await supabaseServer
     .from('Movimientos_Internos')
     .insert({
@@ -43,7 +56,7 @@ const RANGO_MAX_DIAS = 31;
 export interface MovimientoHistorialItem {
   fecha: string;
   concepto: string;
-  tipo: 'INGRESO' | 'EGRESO';
+  tipo: 'INGRESO' | 'EGRESO' | 'EN_CLEARING';
   monto: number;
 }
 
@@ -73,9 +86,8 @@ export async function getHistorialCuenta(
   const desdeTs = `${desde}T00:00:00`;
   const hastaTs = `${hasta}T23:59:59.999`;
 
-  // Movimientos_Financieros (cobros/pagos) y Movimientos_Internos en dos consultas separadas
-  // para origen y destino (evita problemas con .or() y deja claro EGRESO vs INGRESO)
-  const [resMF, resMIOrigen, resMIDestino] = await Promise.all([
+  // Movimientos_Financieros, Movimientos_Internos y Cheques al cobro (DEPOSITADO en esta cuenta)
+  const [resMF, resMIOrigen, resMIDestino, resCheques] = await Promise.all([
     supabaseServer
       .from('Movimientos_Financieros')
       .select('id, fecha, tipo, monto, descripcion')
@@ -97,6 +109,14 @@ export async function getHistorialCuenta(
       .gte('created_at', desdeTs)
       .lte('created_at', hastaTs)
       .order('created_at', { ascending: false }),
+    supabaseServer
+      .from('Cheques_Terceros')
+      .select('id, created_at, monto, numero_cheque')
+      .eq('cuenta_deposito_id', cuentaId)
+      .eq('estado', 'DEPOSITADO')
+      .gte('created_at', desdeTs)
+      .lte('created_at', hastaTs)
+      .order('created_at', { ascending: false }),
   ]);
 
   if (resMF.error) {
@@ -110,6 +130,10 @@ export async function getHistorialCuenta(
   if (resMIDestino.error) {
     console.error('[getHistorialCuenta] Movimientos_Internos (destino):', resMIDestino.error);
     return { data: null, error: 'Error al cargar movimientos internos.' };
+  }
+  if (resCheques.error) {
+    console.error('[getHistorialCuenta] Cheques_Terceros:', resCheques.error);
+    return { data: null, error: 'Error al cargar cheques al cobro.' };
   }
 
   type RowMI = { id: number; created_at: string; cuenta_origen_id: number | null; cuenta_destino_id: number | null; monto: number | null; descripcion: string | null };
@@ -168,6 +192,18 @@ export async function getHistorialCuenta(
       fecha,
       concepto,
       tipo: 'INGRESO',
+      monto: Number(r.monto ?? 0),
+    });
+  }
+
+  const rowsCheques = (resCheques.data ?? []) as { created_at: string; monto: number | null; numero_cheque: string | null }[];
+  for (const r of rowsCheques) {
+    const fecha = (r.created_at ?? '').slice(0, 10);
+    const numero = (r.numero_cheque ?? '').trim() || '—';
+    items.push({
+      fecha,
+      concepto: `Cheque al cobro Nro ${numero}`,
+      tipo: 'EN_CLEARING',
       monto: Number(r.monto ?? 0),
     });
   }

@@ -144,6 +144,8 @@ export interface ChequeTercero {
   fecha_pago: string | null;
   monto: number | null;
   estado: EstadoChequeTercero | null;
+  /** Cuenta donde se depositó (clearing). Se acredita al pasar a COBRADO. */
+  cuenta_deposito_id: number | null;
   cliente_id: number | null;
   proveedor_id: number | null;
   fletero_id: number | null;
@@ -534,6 +536,7 @@ export type Database = {
           fecha_pago?: string | null;
           monto?: number | null;
           estado?: EstadoChequeTercero | null;
+          cuenta_deposito_id?: number | null;
           cliente_id?: number | null;
           proveedor_id?: number | null;
           fletero_id?: number | null;
@@ -548,6 +551,7 @@ export type Database = {
           fecha_pago?: string | null;
           monto?: number | null;
           estado?: EstadoChequeTercero | null;
+          cuenta_deposito_id?: number | null;
           cliente_id?: number | null;
           proveedor_id?: number | null;
           fletero_id?: number | null;

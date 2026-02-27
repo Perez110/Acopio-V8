@@ -92,7 +92,7 @@ export async function getChequesPaginado(
   };
 }
 
-/** Actualiza el estado de un cheque (ej. EN_CARTERA → DEPOSITADO, RECHAZADO). */
+/** Actualiza el estado de un cheque (ej. ENDOSADO, RECHAZADO). No usar para DEPOSITADO/COBRADO; usar depositarCheque/cobrarCheque. */
 export async function updateEstadoCheque(
   id: number,
   nuevoEstado: EstadoChequeTercero
@@ -106,6 +106,9 @@ export async function updateEstadoCheque(
   ];
   if (!estadosValidos.includes(nuevoEstado)) {
     return { error: 'Estado no válido.' };
+  }
+  if (nuevoEstado === 'DEPOSITADO' || nuevoEstado === 'COBRADO') {
+    return { error: 'Usá Depósito o Cobro desde las acciones correspondientes.' };
   }
 
   const { error } = await supabaseServer
@@ -121,6 +124,120 @@ export async function updateEstadoCheque(
   revalidatePath('/cheques');
   revalidatePath('/cobros-pagos');
   return {};
+}
+
+/**
+ * Marca el cheque como Depositado y guarda la cuenta de depósito (clearing).
+ * NO crea Movimientos_Financieros; el saldo real no se toca hasta cobrarCheque.
+ */
+export async function depositarCheque(
+  chequeId: number,
+  cuentaId: number,
+): Promise<{ error?: string }> {
+  const { data: cheque, error: errCheque } = await supabaseServer
+    .from('Cheques_Terceros')
+    .select('id, estado')
+    .eq('id', chequeId)
+    .single();
+
+  if (errCheque || !cheque) {
+    return { error: errCheque?.message ?? 'No se encontró el cheque.' };
+  }
+  if ((cheque.estado as string) !== 'EN_CARTERA') {
+    return { error: 'Solo se puede depositar un cheque en estado En cartera.' };
+  }
+
+  const { error } = await supabaseServer
+    .from('Cheques_Terceros')
+    .update({ estado: 'DEPOSITADO', cuenta_deposito_id: cuentaId })
+    .eq('id', chequeId);
+
+  if (error) {
+    console.error('[depositarCheque] error:', error);
+    return { error: error.message };
+  }
+
+  revalidatePath('/cheques');
+  revalidatePath('/cobros-pagos');
+  revalidatePath('/cajas-bancos');
+  return {};
+}
+
+/**
+ * Marca el cheque como Cobrado e inserta el ingreso en Movimientos_Financieros
+ * (acreditación en la cuenta de depósito). Solo aplicable si estado === DEPOSITADO.
+ */
+export async function cobrarCheque(chequeId: number): Promise<{ error?: string }> {
+  const { data: cheque, error: errCheque } = await supabaseServer
+    .from('Cheques_Terceros')
+    .select('id, estado, cuenta_deposito_id, monto, numero_cheque')
+    .eq('id', chequeId)
+    .single();
+
+  if (errCheque || !cheque) {
+    return { error: errCheque?.message ?? 'No se encontró el cheque.' };
+  }
+  if ((cheque.estado as string) !== 'DEPOSITADO') {
+    return { error: 'Solo se puede cobrar un cheque en estado Depositado.' };
+  }
+
+  const { error: errUpdate } = await supabaseServer
+    .from('Cheques_Terceros')
+    .update({ estado: 'COBRADO' })
+    .eq('id', chequeId);
+
+  if (errUpdate) {
+    console.error('[cobrarCheque] update estado:', errUpdate);
+    return { error: errUpdate.message };
+  }
+
+  const fecha = new Date().toISOString().slice(0, 10);
+  const numero = (cheque.numero_cheque ?? '').trim() || String(chequeId);
+  const descripcion = `Acreditación de Cheque Nro ${numero}`;
+  const monto = Number(cheque.monto ?? 0);
+  const cuentaFinancieraId = cheque.cuenta_deposito_id ?? null;
+
+  const { error: errMov } = await supabaseServer
+    .from('Movimientos_Financieros')
+    .insert({
+      fecha,
+      tipo: 'INGRESO',
+      monto,
+      descripcion,
+      metodo_pago: 'cheque',
+      referencia: null,
+      cuenta_financiera_id: cuentaFinancieraId,
+      cliente_id: null,
+      proveedor_id: null,
+      fletero_id: null,
+      cheque_id: chequeId,
+    });
+
+  if (errMov) {
+    console.error('[cobrarCheque] insert Movimientos_Financieros:', errMov);
+    return { error: errMov.message };
+  }
+
+  revalidatePath('/cheques');
+  revalidatePath('/cobros-pagos');
+  revalidatePath('/cajas-bancos');
+  revalidatePath('/cuentas-corrientes');
+  revalidatePath('/historial');
+  return {};
+}
+
+/** Cuentas activas para selector de depósito (clearing). */
+export async function getCuentasActivas(): Promise<{ id: number; nombre: string | null }[]> {
+  const { data, error } = await supabaseServer
+    .from('Cuentas_Financieras')
+    .select('id, nombre')
+    .eq('activo', true)
+    .order('nombre');
+  if (error) {
+    console.error('[getCuentasActivas] error:', error);
+    return [];
+  }
+  return (data ?? []) as { id: number; nombre: string | null }[];
 }
 
 /**
