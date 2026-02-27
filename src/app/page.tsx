@@ -44,17 +44,22 @@ function formatDate(d: string | null): string {
   return `${day}/${m}/${y}`;
 }
 
-/** Formato fecha + hora para trazabilidad (ej: 27/02/2026 14:30 hs) */
+/** Formato fecha + hora en hora de Argentina (ej: 27/02/2026 14:30 hs) */
+const ZONA_ARGENTINA = 'America/Argentina/Buenos_Aires';
+
 function formatDateTime(iso: string | null): string {
   if (!iso) return '—';
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return '—';
-  const day = String(date.getDate()).padStart(2, '0');
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const year = date.getFullYear();
-  const hours = String(date.getHours()).padStart(2, '0');
-  const minutes = String(date.getMinutes()).padStart(2, '0');
-  return `${day}/${month}/${year} ${hours}:${minutes} hs`;
+  return date.toLocaleString('es-AR', {
+    timeZone: ZONA_ARGENTINA,
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).replace(',', '') + ' hs';
 }
 
 function nombreProveedor(e: UltimaEntradaRow): string {
