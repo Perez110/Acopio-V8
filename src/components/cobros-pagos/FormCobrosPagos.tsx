@@ -192,6 +192,39 @@ export default function FormCobrosPagos({
     setLoadingSaldo(false);
   }, [operacion, tipoEntidad, clienteId, proveedorId, fleteroId]);
 
+  /** Método de pago derivado del tipo de cuenta: EFECTIVO → efectivo, BANCO/VIRTUAL → transferencia. */
+  function metodoDesdeTipoCuenta(tipo: string | null): MetodoPago {
+    const t = (tipo ?? '').toUpperCase();
+    if (t === 'EFECTIVO') return 'efectivo';
+    if (t === 'BANCO' || t === 'VIRTUAL') return 'transferencia';
+    return 'transferencia';
+  }
+
+  /** Al cambiar la cuenta: fijar método según tipo y “bloquear” método. */
+  useEffect(() => {
+    if (!cuentaId) return;
+    const cuenta = cuentas.find(c => String(c.id) === cuentaId);
+    if (cuenta) setMetodoPago(metodoDesdeTipoCuenta(cuenta.tipo));
+  }, [cuentaId, cuentas]);
+
+  /** Si el usuario elige método “Cheque”, quitar cuenta (el cheque no sale de nuestras cuentas). */
+  useEffect(() => {
+    if (metodoPago === 'cheque') setCuentaId('');
+  }, [metodoPago]);
+
+  const cuentaDeshabilitada = metodoPago === 'cheque';
+  const metodoDeshabilitado = !!cuentaId;
+
+  /** Combinación inválida: cuenta y método no coherentes (seguridad). */
+  const isInvalidCombo = (() => {
+    if (metodoPago === 'cheque') return !!cuentaId;
+    if (!cuentaId) return false;
+    const cuenta = cuentas.find(c => String(c.id) === cuentaId);
+    if (!cuenta) return true;
+    const esperado = metodoDesdeTipoCuenta(cuenta.tipo);
+    return metodoPago !== esperado;
+  })();
+
   /** Rango > 31 días: bloquear Filtrar y advertir. */
   const rangoInvalido = (() => {
     if (!desdeHistorial || !hastaHistorial) return false;
@@ -311,6 +344,11 @@ export default function FormCobrosPagos({
   async function handleSubmit() {
     const now = Date.now();
     if (submitting || now - lastSubmitRef.current < 2000) return;
+
+    if (isInvalidCombo) {
+      showToast('error', 'La cuenta financiera y el método de pago no coinciden. Ajustá la cuenta o el método.');
+      return;
+    }
 
     const montoNum = parseFloat(monto);
     if (!monto || isNaN(montoNum) || montoNum <= 0) {
@@ -611,7 +649,8 @@ export default function FormCobrosPagos({
               <select
                 value={cuentaId}
                 onChange={e => setCuentaId(e.target.value)}
-                className={`input-base ${ringClass}`}
+                disabled={cuentaDeshabilitada}
+                className={`input-base ${ringClass} ${cuentaDeshabilitada ? 'cursor-not-allowed bg-gray-50' : ''}`}
               >
                 <option value="">— Sin cuenta específica —</option>
                 {cuentas.map(c => (
@@ -641,7 +680,8 @@ export default function FormCobrosPagos({
                 <select
                   value={metodoPago}
                   onChange={e => setMetodoPago(e.target.value as MetodoPago)}
-                  className={`input-base ${ringClass}`}
+                  disabled={metodoDeshabilitado}
+                  className={`input-base ${ringClass} ${metodoDeshabilitado ? 'cursor-not-allowed bg-gray-50' : ''}`}
                 >
                   {(Object.entries(METODO_LABELS) as [MetodoPago, string][]).map(([k, v]) => (
                     <option key={k} value={k}>
@@ -794,9 +834,15 @@ export default function FormCobrosPagos({
             </Field>
 
             {/* Submit */}
+            {isInvalidCombo && (
+              <p className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                La cuenta y el método de pago no coinciden. Elegí una cuenta para fijar el método, o «Sin cuenta» y Cheque para endosar.
+              </p>
+            )}
             <button
               onClick={handleSubmit}
-              disabled={submitting}
+              disabled={submitting || isInvalidCombo}
               className={`flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold text-white shadow-sm transition-all disabled:cursor-not-allowed ${
                 operacion === 'cobro'
                   ? 'bg-green-600 hover:bg-green-700 disabled:bg-green-300'
