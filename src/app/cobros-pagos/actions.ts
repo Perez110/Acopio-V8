@@ -7,12 +7,15 @@ import { getSaldoActualCuenta } from '@/lib/get-saldo-cuenta';
 /**
  * Elimina un movimiento financiero por su ID.
  *
- * - Si es EGRESO (pago): borra solo de Movimientos_Financieros.
- * - Si es INGRESO (cobro): borra de Movimientos_Financieros y busca +
- *   elimina el registro gemelo en Cobros_Clientes (vinculado por
- *   cliente_id + monto + fecha, que es cómo se insertaron juntos).
+ * - Si es EGRESO (pago): borra solo de Movimientos_Financieros. Los RPC
+ *   get_saldos_proveedores/get_saldos_clientes recalculan al cargar Cuentas Corrientes;
+ *   al quitar el pago, el saldo de la entidad sube y, si pasa a > 0, vuelve a Saldos Activos.
+ * - Si es INGRESO (cobro): borra de Movimientos_Financieros y elimina el registro gemelo
+ *   en Cobros_Clientes (vinculado por cliente_id + monto + fecha). Idem: el saldo del
+ *   cliente se recalcula y puede volver a Saldos Activos.
  *
- * Al terminar, revalida /cobros-pagos, /cuentas-corrientes y /cajas-bancos.
+ * Revalida /cobros-pagos, /cuentas-corrientes (layout) y /cajas-bancos para que la
+ * próxima visita a Cuentas Corrientes muestre saldos y pestañas Activos/Cerrados correctos.
  */
 export async function deleteMovimientoFinanciero(
   id: number
@@ -21,7 +24,7 @@ export async function deleteMovimientoFinanciero(
     // 1. Leer el movimiento para saber tipo y datos de búsqueda
     const { data: mov, error: fetchErr } = await supabaseServer
       .from('Movimientos_Financieros')
-      .select('id, tipo, monto, fecha, cliente_id')
+      .select('id, tipo, monto, fecha, cliente_id, proveedor_id')
       .eq('id', id)
       .single();
 
@@ -71,9 +74,11 @@ export async function deleteMovimientoFinanciero(
       return { error: delErr.message };
     }
 
-    // 4. Revalidar todas las rutas afectadas por este movimiento
+    // 4. Revalidar rutas afectadas. Cuentas Corrientes usa RPC (saldos en vivo):
+    //    al borrar este movimiento, el saldo de la entidad se recalcula en la próxima
+    //    carga; si saldo > 0, la entidad vuelve a "Saldos Activos".
     revalidatePath('/cobros-pagos');
-    revalidatePath('/cuentas-corrientes');
+    revalidatePath('/cuentas-corrientes', 'layout');
     revalidatePath('/cajas-bancos');
 
     return {};

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   TrendingUp,
   TrendingDown,
@@ -147,6 +148,7 @@ export default function FormCobrosPagos({
   const [loadingPagina, setLoadingPagina] = useState(false);
   const [desdeHistorial, setDesdeHistorial] = useState(getFirstDayOfMonth);
   const [hastaHistorial, setHastaHistorial] = useState(today);
+  const router = useRouter();
   // ID del movimiento que se está eliminando (null = ninguno)
   const [deletingId, setDeletingId] = useState<number | null>(null);
   // Movimiento pendiente de confirmación en el modal (null = modal cerrado)
@@ -295,6 +297,7 @@ export default function FormCobrosPagos({
       } else {
         setHistorial(prev => prev.filter(h => h.id !== item.id));
         showToast('success', `${esIngreso ? 'Cobro' : 'Pago'} eliminado correctamente.`);
+        router.refresh();
       }
     } catch (err) {
       console.error('[handleDelete] unexpected error:', err);

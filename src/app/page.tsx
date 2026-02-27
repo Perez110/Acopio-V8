@@ -18,25 +18,52 @@ interface DashboardKPIsRow {
   stock_bines_actual?: number | null;
 }
 
-// Tipos para las listas limitadas (Supabase devuelve relaciones como array)
+// Tipos para las listas limitadas (Supabase devuelve la relación FK como objeto)
 interface UltimaEntradaRow {
   id: number;
   fecha_entrada: string | null;
+  created_at: string | null;
   peso_neto_kg: number | null;
-  Proveedores: { nombre: string | null }[] | null;
+  Proveedores: { nombre: string | null } | null;
 }
 
 interface UltimaSalidaRow {
   id: number;
   fecha_salida: string | null;
+  created_at: string | null;
   peso_salida_acopio_kg: number | null;
-  Clientes: { nombre: string | null }[] | null;
+  Clientes: { nombre: string | null } | null;
 }
 
 function formatDate(d: string | null): string {
   if (!d) return '—';
   const [y, m, day] = d.split('-');
   return `${day}/${m}/${y}`;
+}
+
+/** Formato fecha + hora para trazabilidad (ej: 27/02/2026 14:30 hs) */
+function formatDateTime(iso: string | null): string {
+  if (!iso) return '—';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '—';
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${day}/${month}/${year} ${hours}:${minutes} hs`;
+}
+
+function nombreProveedor(e: UltimaEntradaRow): string {
+  const p = e.Proveedores;
+  const name = (p && typeof p === 'object' && !Array.isArray(p) ? p.nombre : (p as { nombre?: string }[])?.[0]?.nombre) ?? null;
+  return (name?.trim()) || 'Sin nombre';
+}
+
+function nombreCliente(s: UltimaSalidaRow): string {
+  const c = s.Clientes;
+  const name = (c && typeof c === 'object' && !Array.isArray(c) ? c.nombre : (c as { nombre?: string }[])?.[0]?.nombre) ?? null;
+  return (name?.trim()) || 'Sin nombre';
 }
 
 export default async function DashboardPage() {
@@ -55,24 +82,24 @@ export default async function DashboardPage() {
     p_anio,
   });
 
-  // Últimas 10 entradas y 10 salidas del MES ACTUAL (límite estricto para rendimiento)
+  // Últimas 10 entradas y 10 salidas del MES ACTUAL (join con Proveedores/Clientes, created_at para fecha+hora)
   const [
     { data: ultimasEntradas },
     { data: ultimasSalidas },
   ] = await Promise.all([
     supabaseServer
       .from('Entradas_Fruta')
-      .select('id, fecha_entrada, peso_neto_kg, Proveedores(nombre)')
+      .select('id, fecha_entrada, created_at, peso_neto_kg, Proveedores(nombre)')
       .gte('fecha_entrada', startOfMonth)
       .lte('fecha_entrada', endOfMonth)
-      .order('fecha_entrada', { ascending: false })
+      .order('created_at', { ascending: false })
       .limit(10),
     supabaseServer
       .from('Salidas_Fruta')
-      .select('id, fecha_salida, peso_salida_acopio_kg, Clientes(nombre)')
+      .select('id, fecha_salida, created_at, peso_salida_acopio_kg, Clientes(nombre)')
       .gte('fecha_salida', startOfMonth)
       .lte('fecha_salida', endOfMonth)
-      .order('fecha_salida', { ascending: false })
+      .order('created_at', { ascending: false })
       .limit(10),
   ]);
 
@@ -170,11 +197,11 @@ export default async function DashboardPage() {
             <ul className="divide-y divide-gray-50">
               {entradasList.map((e) => (
                 <li key={e.id} className="grid grid-cols-[1fr_minmax(0,2fr)_auto] items-center gap-3 py-2.5 first:pt-0">
-                  <span className="text-sm text-gray-500 shrink-0">
-                    {formatDate(e.fecha_entrada)}
+                  <span className="text-sm text-gray-500 shrink-0" title={e.created_at ?? undefined}>
+                    {formatDateTime(e.created_at)}
                   </span>
-                  <span className="text-sm font-medium text-gray-900 truncate min-w-0" title={e.Proveedores?.[0]?.nombre ?? undefined}>
-                    {e.Proveedores?.[0]?.nombre ?? '—'}
+                  <span className="text-sm font-medium text-gray-900 truncate min-w-0" title={nombreProveedor(e)}>
+                    {nombreProveedor(e)}
                   </span>
                   <span className="font-mono text-sm font-semibold text-gray-900 text-right shrink-0">
                     {formatNumber(e.peso_neto_kg ?? 0)} kg
@@ -196,11 +223,11 @@ export default async function DashboardPage() {
             <ul className="divide-y divide-gray-50">
               {salidasList.map((s) => (
                 <li key={s.id} className="grid grid-cols-[1fr_minmax(0,2fr)_auto] items-center gap-3 py-2.5 first:pt-0">
-                  <span className="text-sm text-gray-500 shrink-0">
-                    {formatDate(s.fecha_salida)}
+                  <span className="text-sm text-gray-500 shrink-0" title={s.created_at ?? undefined}>
+                    {formatDateTime(s.created_at)}
                   </span>
-                  <span className="text-sm font-medium text-gray-900 truncate min-w-0" title={s.Clientes?.[0]?.nombre ?? undefined}>
-                    {s.Clientes?.[0]?.nombre ?? '—'}
+                  <span className="text-sm font-medium text-gray-900 truncate min-w-0" title={nombreCliente(s)}>
+                    {nombreCliente(s)}
                   </span>
                   <span className="font-mono text-sm font-semibold text-gray-900 text-right shrink-0">
                     {formatNumber(s.peso_salida_acopio_kg ?? 0)} kg
