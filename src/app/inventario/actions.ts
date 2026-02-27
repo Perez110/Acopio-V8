@@ -260,11 +260,20 @@ export async function getHistorialAjustes(
     return { data: null, error: error.message };
   }
 
-  const list: AjusteHistorialRow[] = (rows ?? []).map((r: { id: number; fecha_movimiento: string | null; envase_id: number | null; tipo_movimiento: string; cantidad: number | null; notas: string | null; Envases: { nombre: string | null } | null }) => ({
+  type RowDb = {
+    id: number;
+    fecha_movimiento: string | null;
+    envase_id: number | null;
+    tipo_movimiento: string;
+    cantidad: number | null;
+    notas: string | null;
+    Envases: Array<{ nombre: string | null }> | null;
+  };
+  const list: AjusteHistorialRow[] = (rows ?? []).map((r: RowDb) => ({
     id: r.id,
     fecha_movimiento: r.fecha_movimiento,
     envase_id: r.envase_id,
-    envase_nombre: r.Envases?.nombre ?? '—',
+    envase_nombre: r.Envases?.[0]?.nombre ?? 'Sin nombre',
     tipo_movimiento: r.tipo_movimiento,
     cantidad: r.cantidad,
     notas: r.notas,
