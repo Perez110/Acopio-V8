@@ -18,13 +18,16 @@ interface DashboardKPIsRow {
   stock_bines_actual?: number | null;
 }
 
-// Tipos para las listas limitadas (Supabase devuelve la relación FK como objeto)
+// Tipos para las listas limitadas (Supabase puede devolver la relación FK como array u objeto)
+type ProveedorNombre = { nombre: string | null };
+type ClienteNombre = { nombre: string | null };
+
 interface UltimaEntradaRow {
   id: number;
   fecha_entrada: string | null;
   created_at: string | null;
   peso_neto_kg: number | null;
-  Proveedores: { nombre: string | null } | null;
+  Proveedores: ProveedorNombre[] | ProveedorNombre | null;
 }
 
 interface UltimaSalidaRow {
@@ -32,7 +35,7 @@ interface UltimaSalidaRow {
   fecha_salida: string | null;
   created_at: string | null;
   peso_salida_acopio_kg: number | null;
-  Clientes: { nombre: string | null } | null;
+  Clientes: ClienteNombre[] | ClienteNombre | null;
 }
 
 function formatDate(d: string | null): string {
@@ -56,13 +59,15 @@ function formatDateTime(iso: string | null): string {
 
 function nombreProveedor(e: UltimaEntradaRow): string {
   const p = e.Proveedores;
-  const name = (p && typeof p === 'object' && !Array.isArray(p) ? p.nombre : (p as { nombre?: string }[])?.[0]?.nombre) ?? null;
+  if (!p) return 'Sin nombre';
+  const name = Array.isArray(p) ? p[0]?.nombre : p.nombre;
   return (name?.trim()) || 'Sin nombre';
 }
 
 function nombreCliente(s: UltimaSalidaRow): string {
   const c = s.Clientes;
-  const name = (c && typeof c === 'object' && !Array.isArray(c) ? c.nombre : (c as { nombre?: string }[])?.[0]?.nombre) ?? null;
+  if (!c) return 'Sin nombre';
+  const name = Array.isArray(c) ? c[0]?.nombre : c.nombre;
   return (name?.trim()) || 'Sin nombre';
 }
 
@@ -109,8 +114,8 @@ export default async function DashboardPage() {
   const saldoFinancieroMes = Number(row?.saldo_financiero_mes ?? 0);
   const stockBinesActual = Number(row?.stock_bines_actual ?? 0);
 
-  const entradasList = (ultimasEntradas ?? []) as UltimaEntradaRow[];
-  const salidasList = (ultimasSalidas ?? []) as UltimaSalidaRow[];
+  const entradasList = (ultimasEntradas ?? []) as unknown as UltimaEntradaRow[];
+  const salidasList = (ultimasSalidas ?? []) as unknown as UltimaSalidaRow[];
 
   const stats = [
     {
