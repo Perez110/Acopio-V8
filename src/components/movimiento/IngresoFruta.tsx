@@ -6,8 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { getSaldoEnvasesProveedor } from '@/app/movimiento/actions';
 import { insertarMovimientosEnvases } from '@/app/inventario/actions';
 import { generarRemitoIngresoPdf } from './remitoIngresoPdf';
-import { useConfigEmpresa } from '@/components/ClientShell';
-import { convertUrlToBase64 } from '@/lib/imageUtils';
+import { getConfiguracionConLogoParaPdf } from '@/app/configuracion/actions';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import Combobox, { type ComboOption } from '@/components/ui/Combobox';
 import Modal from '@/components/ui/Modal';
@@ -64,7 +63,6 @@ function sortByNombre<T extends { nombre: string | null }>(arr: T[]): T[] {
 
 // ── Componente principal ──────────────────────────────────────────────────────
 export default function IngresoFruta() {
-  const configEmpresa = useConfigEmpresa();
   // Listas de Supabase
   const [proveedores, setProveedores] = useState<Proveedor[]>([]);
   const [fleteros, setFleteros] = useState<Fletero[]>([]);
@@ -712,10 +710,8 @@ export default function IngresoFruta() {
             <div className="mt-4 flex flex-col gap-2 px-6 pb-2">
               <button
                 onClick={async () => {
-                  let empresaLogoBase64: string | null = null;
-                  if (configEmpresa?.logo_url) {
-                    empresaLogoBase64 = await convertUrlToBase64(configEmpresa.logo_url);
-                  }
+                  const { nombre_empresa: empresaNombre, logo_base64: empresaLogoBase64 } =
+                    await getConfiguracionConLogoParaPdf();
                   generarRemitoIngresoPdf({
                     nroOperacion: comprobanteModal.nroOperacion,
                     fechaHora: comprobanteModal.fechaHora,
@@ -733,7 +729,7 @@ export default function IngresoFruta() {
                       comprobanteModal.items.reduce((s, p) => s + p.cantidad_envases, 0),
                     envasesRetiradosHoy: comprobanteModal.envasesRetiradosHoy,
                     saldoPendiente: comprobanteModal.saldoPendiente,
-                    empresaNombre: configEmpresa?.nombre_empresa || 'Acopio',
+                    empresaNombre,
                     empresaLogoBase64: empresaLogoBase64 ?? undefined,
                   });
                 }}

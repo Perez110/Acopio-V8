@@ -30,6 +30,36 @@ export async function getConfiguracion(): Promise<ConfiguracionEmpresa | null> {
  * Usa service_role si está disponible para evitar fallos por RLS con usuario no autenticado.
  * Si falla, devuelve null (el caller debe usar fallback).
  */
+/**
+ * Devuelve nombre y logo en base64 para usar en PDFs (remito ingreso, etc.).
+ * Siempre lee la config actual desde la DB y convierte el logo en el servidor para evitar caché y CORS.
+ */
+export async function getConfiguracionConLogoParaPdf(): Promise<{
+  nombre_empresa: string;
+  logo_base64: string | null;
+}> {
+  const config = await getConfiguracion();
+  const nombre = (config?.nombre_empresa?.trim()) || 'Acopio';
+
+  let logo_base64: string | null = null;
+  const logoUrl = config?.logo_url?.trim();
+  if (logoUrl) {
+    try {
+      const res = await fetch(logoUrl);
+      if (res.ok) {
+        const buf = await res.arrayBuffer();
+        const b64 = Buffer.from(buf).toString('base64');
+        const contentType = res.headers.get('content-type') || 'image/png';
+        logo_base64 = `data:${contentType};base64,${b64}`;
+      }
+    } catch (err) {
+      console.error('[getConfiguracionConLogoParaPdf] fetch logo:', err);
+    }
+  }
+
+  return { nombre_empresa: nombre, logo_base64 };
+}
+
 export async function getConfiguracionParaLogin(): Promise<{
   nombre_empresa: string | null;
   logo_url: string | null;
@@ -95,8 +125,9 @@ export async function updateConfiguracion(formData: FormData): Promise<{ ok: boo
       return { ok: false, error: 'No se pudo guardar la configuración.' };
     }
 
-    // Revalidar layout, sidebar y página de configuración
+    // Revalidar layout, sidebar, login y página de configuración (login usa nombre/logo)
     revalidatePath('/');
+    revalidatePath('/login');
     revalidatePath('/configuracion/general');
 
     return { ok: true };

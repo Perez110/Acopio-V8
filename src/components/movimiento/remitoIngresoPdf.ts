@@ -43,7 +43,8 @@ function drawHeader(
   // Logo empresa (base64) o placeholder
   if (data.empresaLogoBase64) {
     try {
-      doc.addImage(data.empresaLogoBase64, 'PNG', x, startY, logoW, logoH);
+      const format = /data:image\/jpe?g/i.test(data.empresaLogoBase64) ? 'JPEG' : 'PNG';
+      doc.addImage(data.empresaLogoBase64, format, x, startY, logoW, logoH);
     } catch {
       // fallback simple en caso de error de imagen
       doc.setFillColor(230, 230, 232);

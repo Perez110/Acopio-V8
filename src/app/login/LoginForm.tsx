@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Loader2, Lock, Mail } from 'lucide-react';
 import { signIn } from './actions';
 
@@ -9,7 +9,23 @@ interface Props {
   logoUrl: string | null;
 }
 
+/** Si la URL tiene token de recuperación o invitación, redirigir a /set-password para que establezca la contraseña. */
+function useRedirectToSetPassword() {
+  useEffect(() => {
+    const hash = typeof window !== 'undefined' ? window.location.hash : '';
+    if (!hash) return;
+    const params = new URLSearchParams(hash.slice(1));
+    const accessToken = params.get('access_token');
+    const type = params.get('type');
+    if (accessToken && (type === 'recovery' || type === 'invite' || type === 'signup')) {
+      window.location.replace(`/set-password${hash}`);
+    }
+  }, []);
+}
+
 export default function LoginForm({ nombreSistema, logoUrl }: Props) {
+  useRedirectToSetPassword();
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');

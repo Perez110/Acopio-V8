@@ -3,7 +3,7 @@
 import { supabaseServer } from '@/lib/supabase-server';
 import { revalidatePath } from 'next/cache';
 import { getSaldoEnvasesProveedor } from '@/app/movimiento/actions';
-import { getConfiguracion } from '@/app/configuracion/actions';
+import { getConfiguracionConLogoParaPdf } from '@/app/configuracion/actions';
 
 // Mapeo: tipo_evento (vista historial_unificado) → tabla real en Supabase
 const TABLA_POR_TIPO: Record<string, string> = {
@@ -199,6 +199,7 @@ export interface DatosReimpresionIngreso {
   envasesRetiradosHoy: number;
   saldoPendiente: number;
   empresaNombre: string;
+  empresaLogoBase64?: string | null;
 }
 
 /**
@@ -278,7 +279,7 @@ export async function getDatosReimpresionIngreso(
 
     const envasesIngresadosHoy = items.reduce((s, i) => s + i.cantidad_envases, 0);
     const saldoPendiente = await getSaldoEnvasesProveedor(proveedorId);
-    const config = await getConfiguracion();
+    const { nombre_empresa: empresaNombre, logo_base64: empresaLogoBase64 } = await getConfiguracionConLogoParaPdf();
 
     return {
       data: {
@@ -290,7 +291,8 @@ export async function getDatosReimpresionIngreso(
         envasesIngresadosHoy,
         envasesRetiradosHoy: 0,
         saldoPendiente,
-        empresaNombre: config?.nombre_empresa ?? 'Acopio',
+        empresaNombre,
+        empresaLogoBase64: empresaLogoBase64 ?? null,
       },
       error: null,
     };

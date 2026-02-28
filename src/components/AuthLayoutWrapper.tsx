@@ -11,7 +11,7 @@ interface Props {
 
 export default function AuthLayoutWrapper({ children, configEmpresa }: Props) {
   const pathname = usePathname();
-  if (pathname === '/login') {
+  if (pathname === '/login' || pathname === '/set-password') {
     return <>{children}</>;
   }
   return <ClientShell configEmpresa={configEmpresa}>{children}</ClientShell>;

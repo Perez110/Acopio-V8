@@ -2,11 +2,12 @@ import {
   ArrowDownToLine,
   ArrowUpFromLine,
   Package,
-  Landmark,
   TrendingUp,
+  CircleDollarSign,
 } from 'lucide-react';
 import { supabaseServer } from '@/lib/supabase-server';
 import { formatCurrency, formatNumber } from '@/lib/utils';
+import BienvenidoBanner from '@/components/BienvenidoBanner';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,7 +15,7 @@ export const dynamic = 'force-dynamic';
 interface DashboardKPIsRow {
   entradas_mes_kg?: number | null;
   salidas_mes_kg?: number | null;
-  saldo_financiero_mes?: number | null;
+  ganancia_neta_mes?: number | null;
   stock_bines_actual?: number | null;
 }
 
@@ -76,7 +77,12 @@ function nombreCliente(s: UltimaSalidaRow): string {
   return (name?.trim()) || 'Sin nombre';
 }
 
-export default async function DashboardPage() {
+interface PageProps {
+  searchParams: Promise<{ bienvenido?: string }>;
+}
+
+export default async function DashboardPage({ searchParams }: PageProps) {
+  const params = await searchParams;
   const now = new Date();
   const p_mes = now.getMonth() + 1;
   const p_anio = now.getFullYear();
@@ -116,7 +122,7 @@ export default async function DashboardPage() {
   const row = (kpisRows ?? [])[0] as DashboardKPIsRow | undefined;
   const entradasMesKg = Number(row?.entradas_mes_kg ?? 0);
   const salidasMesKg = Number(row?.salidas_mes_kg ?? 0);
-  const saldoFinancieroMes = Number(row?.saldo_financiero_mes ?? 0);
+  const gananciaNetaMes = Number(row?.ganancia_neta_mes ?? 0);
   const stockBinesActual = Number(row?.stock_bines_actual ?? 0);
 
   const entradasList = (ultimasEntradas ?? []) as unknown as UltimaEntradaRow[];
@@ -148,17 +154,18 @@ export default async function DashboardPage() {
       border: 'border-green-100',
     },
     {
-      label: 'Saldo Financiero',
-      value: formatCurrency(saldoFinancieroMes),
+      label: 'Ganancia Neta del Mes',
+      value: formatCurrency(gananciaNetaMes),
       unit: '',
-      icon: Landmark,
-      color: 'bg-slate-100 text-slate-600',
-      border: 'border-slate-200',
+      icon: CircleDollarSign,
+      color: 'bg-emerald-50 text-emerald-700',
+      border: 'border-emerald-100',
     },
   ];
 
   return (
     <div className="p-8">
+      {params?.bienvenido === '1' && <BienvenidoBanner show />}
       {/* Header */}
       <div className="mb-8">
         <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">

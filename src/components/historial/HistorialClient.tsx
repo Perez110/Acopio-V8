@@ -197,6 +197,7 @@ export default function HistorialClient({
       await generarRemitoIngresoPdf({
         ...data,
         empresaNombre: data.empresaNombre,
+        empresaLogoBase64: data.empresaLogoBase64 ?? undefined,
       });
     } catch (e) {
       showToastError(e instanceof Error ? e.message : 'Error al generar el PDF.');

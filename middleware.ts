@@ -22,13 +22,18 @@ export async function middleware(request: NextRequest) {
   );
 
   const { data: { user } } = await supabase.auth.getUser();
+  const path = request.nextUrl.pathname;
 
-  if (!user && !request.nextUrl.pathname.startsWith('/login')) {
-    return NextResponse.redirect(new URL('/login', request.url));
+  // Rutas públicas: login y set-password (set-password recibe el token en el hash, no en cookies)
+  if (path.startsWith('/login') || path.startsWith('/set-password')) {
+    if (user && path === '/login') {
+      return NextResponse.redirect(new URL('/', request.url));
+    }
+    return response;
   }
 
-  if (user && request.nextUrl.pathname === '/login') {
-    return NextResponse.redirect(new URL('/', request.url));
+  if (!user) {
+    return NextResponse.redirect(new URL('/login', request.url));
   }
 
   return response;
