@@ -23,6 +23,16 @@ function hasAccessTokenInHash(): boolean {
   return !!params.get('access_token');
 }
 
+/** Extrae access_token y refresh_token del hash para establecer la sesión manualmente */
+function getTokensFromHash(): { access_token: string; refresh_token: string } | null {
+  if (typeof window === 'undefined' || !window.location.hash) return null;
+  const params = new URLSearchParams(window.location.hash.slice(1));
+  const access = params.get('access_token');
+  const refresh = params.get('refresh_token');
+  if (access && refresh) return { access_token: access, refresh_token: refresh };
+  return null;
+}
+
 export default function SetPasswordForm({ nombreSistema, logoUrl }: Props) {
   const router = useRouter();
   const [password, setPassword] = useState('');
@@ -30,43 +40,88 @@ export default function SetPasswordForm({ nombreSistema, logoUrl }: Props) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<'checking' | 'ready' | 'no-session'>('checking');
+  /** true cuando hay hash pero tras el timeout no hubo sesión (enlace expirado/inválido) */
+  const [linkExpired, setLinkExpired] = useState(false);
+  /** true cuando tenemos sesión activa (hash procesado correctamente) */
+  const [hasValidSession, setHasValidSession] = useState(false);
 
   useEffect(() => {
     const supabase = createClient();
     const hasToken = hasAccessTokenInHash();
     const hashType = getHashType();
-    const isInviteOrRecovery = hasToken && (hashType === 'recovery' || hashType === 'invite' || hashType === 'signup');
+
+    // Debug: validación del hash
+    if (typeof window !== 'undefined' && window.location.hash) {
+      const params = new URLSearchParams(window.location.hash.slice(1));
+      console.log('[SetPassword] hash detectado:', {
+        hasAccessToken: !!params.get('access_token'),
+        type: params.get('type'),
+        refreshToken: !!params.get('refresh_token'),
+      });
+    }
 
     if (!hasToken) {
       setStatus('no-session');
       return;
     }
 
+    async function trySetSessionFromHash() {
+      const tokens = getTokensFromHash();
+      if (tokens) {
+        try {
+          const { error: setErr } = await supabase.auth.setSession({
+            access_token: tokens.access_token,
+            refresh_token: tokens.refresh_token,
+          });
+          if (setErr) {
+            console.log('[SetPassword] setSession error:', setErr.message);
+          } else {
+            console.log('[SetPassword] setSession OK desde hash');
+          }
+        } catch (e) {
+          console.log('[SetPassword] setSession excepción:', e);
+        }
+      }
+    }
+
     function trySetReady() {
       supabase.auth.getSession().then(({ data: { session } }) => {
         if (session) {
+          console.log('[SetPassword] sesión obtenida correctamente');
           setStatus('ready');
           setError('');
+          setLinkExpired(false);
+          setHasValidSession(true);
         }
       });
     }
 
-    // El cliente de Supabase puede establecer la sesión desde el hash al cargar; comprobar de inmediato y tras un breve delay
-    trySetReady();
+    // Intentar establecer sesión desde el hash (por si el cliente no la parseó solo)
+    trySetSessionFromHash().then(() => {
+      trySetReady();
+    });
     const t1 = setTimeout(trySetReady, 400);
     const t2 = setTimeout(() => {
       supabase.auth.getSession().then(({ data: { session } }) => {
-        if (!session && isInviteOrRecovery) {
-          setError('El enlace expiró o es inválido. Solicitá uno nuevo.');
+        if (session) {
+          setHasValidSession(true);
+          setLinkExpired(false);
+          setError('');
+        } else {
+          setLinkExpired(true);
+          setError('Por favor, solicitá una nueva invitación.');
         }
         setStatus('ready');
       });
     }, 1500);
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('[SetPassword] onAuthStateChange', event, !!session);
       if (session) {
         setStatus('ready');
         setError('');
+        setLinkExpired(false);
+        setHasValidSession(true);
       }
     });
 
@@ -85,7 +140,9 @@ export default function SetPasswordForm({ nombreSistema, logoUrl }: Props) {
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    console.log('[SetPassword] handleSubmit disparado');
     setError('');
+
     if (!password || password.length < 8) {
       setError('La contraseña debe tener al menos 8 caracteres.');
       return;
@@ -99,17 +156,26 @@ export default function SetPasswordForm({ nombreSistema, logoUrl }: Props) {
       return;
     }
 
-    setLoading(true);
     const supabase = createClient();
-    const { error: err } = await supabase.auth.updateUser({ password });
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      console.log('[SetPassword] updateUser abortado: no hay sesión');
+      setError('La sesión expiró. Por favor, solicitá una nueva invitación.');
+      return;
+    }
 
+    console.log('[SetPassword] llamando updateUser...');
+    setLoading(true);
+    const { error: err } = await supabase.auth.updateUser({ password });
     setLoading(false);
+
     if (err) {
+      console.log('[SetPassword] updateUser error:', err.message, err);
       setError(err.message || 'No se pudo actualizar la contraseña.');
       return;
     }
 
-    // Limpiar el hash de la URL antes de redirigir para no dejar tokens en el historial
+    console.log('[SetPassword] contraseña actualizada, redirigiendo');
     window.history.replaceState(null, '', window.location.pathname);
     router.replace('/?bienvenido=1');
   }
@@ -155,7 +221,7 @@ export default function SetPasswordForm({ nombreSistema, logoUrl }: Props) {
 
           <form onSubmit={handleSubmit} className="mt-8 space-y-5">
             {error && (
-              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">
+              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700" role="alert">
                 {error}
               </div>
             )}
@@ -173,7 +239,8 @@ export default function SetPasswordForm({ nombreSistema, logoUrl }: Props) {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Mínimo 8 caracteres (letras o símbolos)"
-                  className="w-full rounded-xl border border-slate-200 py-2.5 pl-10 pr-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#0d5c4c] focus:outline-none focus:ring-2 focus:ring-[#0d5c4c]/20"
+                  disabled={linkExpired}
+                  className="w-full rounded-xl border border-slate-200 py-2.5 pl-10 pr-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#0d5c4c] focus:outline-none focus:ring-2 focus:ring-[#0d5c4c]/20 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-500"
                 />
               </div>
             </div>
@@ -191,13 +258,14 @@ export default function SetPasswordForm({ nombreSistema, logoUrl }: Props) {
                   value={confirm}
                   onChange={(e) => setConfirm(e.target.value)}
                   placeholder="Repetí la contraseña"
-                  className="w-full rounded-xl border border-slate-200 py-2.5 pl-10 pr-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#0d5c4c] focus:outline-none focus:ring-2 focus:ring-[#0d5c4c]/20"
+                  disabled={linkExpired}
+                  className="w-full rounded-xl border border-slate-200 py-2.5 pl-10 pr-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#0d5c4c] focus:outline-none focus:ring-2 focus:ring-[#0d5c4c]/20 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-500"
                 />
               </div>
             </div>
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || linkExpired}
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#0d5c4c] py-3 text-sm font-semibold text-white transition-colors hover:bg-[#0a4a3d] disabled:cursor-not-allowed disabled:opacity-70"
             >
               {loading ? (
@@ -205,6 +273,8 @@ export default function SetPasswordForm({ nombreSistema, logoUrl }: Props) {
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Guardando…
                 </>
+              ) : linkExpired ? (
+                'Enlace inválido'
               ) : (
                 'Guardar contraseña y continuar'
               )}
